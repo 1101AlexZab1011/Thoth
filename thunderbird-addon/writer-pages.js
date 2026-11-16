@@ -14,6 +14,36 @@ const SERIF = '"Times New Roman", "Liberation Serif", Tinos, "Nimbus Roman", ser
 const SANS = '"Liberation Sans", Arimo, Arial, "Helvetica Neue", sans-serif';
 export const DEFAULT_SIZE = 12;
 
+/**
+ * The lines of a paragraph: { top, bottom } where they would be without page gaps (plus `shift`),
+ * and their client coordinates, to find the text position a line starts at.
+ */
+function textLines(dom, base, zoom, natural, shift) {
+  const range = document.createRange();
+  const rects = [];
+  const walker = document.createTreeWalker(dom, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT, {
+    acceptNode: (node) => (node.nodeType === 1 ? (node.classList?.contains("pv-gap") ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_SKIP) : NodeFilter.FILTER_ACCEPT),
+  });
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    if (!node.nodeValue) continue;
+    range.selectNodeContents(node);
+    for (const r of range.getClientRects()) if (r.width > 0 && r.height > 3) rects.push(r);
+  }
+  for (const el of dom.querySelectorAll(".qi, img, .katex")) { const r = el.getBoundingClientRect(); if (r.height > 3) rects.push(r); }
+  rects.sort((a, b) => a.top - b.top || a.left - b.left);
+  const lines = [];
+  for (const r of rects) {
+    const last = lines.at(-1);
+    const overlap = last ? Math.min(last.clientBottom, r.bottom) - Math.max(last.clientTop, r.top) : 0;
+    if (last && overlap > Math.min(r.height, last.clientBottom - last.clientTop) * 0.4) {
+      last.clientTop = Math.min(last.clientTop, r.top);
+      last.clientBottom = Math.max(last.clientBottom, r.bottom);
+      last.clientLeft = Math.min(last.clientLeft, r.left);
+    } else lines.push({ clientTop: r.top, clientBottom: r.bottom, clientLeft: r.left });
+  }
+  return lines.map((line) => ({ ...line, top: natural(line.clientTop) + shift, bottom: natural(line.clientBottom) + shift }));
+}
+
 export function createPageView({ page, getEditor, getZoom, getLayout, paperSize, onDraw }) {
   const sheets = h("div.pv-sheets", { "aria-hidden": "true" });
   page.prepend(sheets);
@@ -59,29 +89,66 @@ export function createPageView({ page, getEditor, getZoom, getLayout, paperSize,
     const contentTop = (p) => p * pitch + g.top;
     const contentBottom = (p) => p * pitch + g.height - g.bottom;
     const old = new Map(editor.pageGaps().map((gap) => [gap.pos, gap.height]));
+    // Where everything would be without the gaps now in place: a gap shifts all below it.
+    const placed = [...page.querySelectorAll(".pv-gap")].map((el) => { const r = el.getBoundingClientRect(); return { top: (r.top - base.top) / zoom, height: r.height / zoom }; });
+    const natural = (clientY) => { const y = (clientY - base.top) / zoom; return y - placed.reduce((sum, gap) => (gap.top < y - 0.5 ? sum + gap.height : sum), 0); };
     const gaps = [];
-    let oldSum = 0; // old gaps above the block being placed (they go)
-    let newSum = 0; // new gaps above it
+    let newSum = 0; // new gaps above the block being placed
     let p = 0;
     let breakNext = false;
     let first = true; // the block is the first on its sheet
-    for (const { pos, dom } of editor.topBlocks()) {
-      oldSum += old.get(pos) ?? 0;
+    let previous = null; // the block before: { pos, top, heading, first, page, sum }
+    const startPage = (pos, top, inline = false) => {
+      p++;
+      while (contentTop(p) < top - 0.5) p++;
+      const gap = contentTop(p) - top;
+      gaps.push({ pos, height: gap, page: p + 1, inline });
+      newSum += gap;
+      return gap;
+    };
+    for (const { pos, dom, node } of editor.topBlocks()) {
       const rect = dom.getBoundingClientRect();
       if (!rect.height && !rect.width) continue;
-      let top = (rect.top - base.top) / zoom - oldSum + newSum;
-      const height = rect.height / zoom;
-      if (breakNext || (!first && top + height > contentBottom(p) + 0.5)) {
-        p++;
-        while (contentTop(p) < top - 0.5) p++;
-        const gap = contentTop(p) - top;
-        gaps.push({ pos, height: gap, page: p + 1 });
-        newSum += gap;
-        top += gap;
+      let top = natural(rect.top) + newSum;
+      let bottom = natural(rect.bottom) + newSum;
+      if (breakNext || (!first && bottom > contentBottom(p) + 0.5)) {
+        // A paragraph breaks between lines, as in Word: at least two lines stay on each side.
+        let lines = !breakNext && node.type.name === "paragraph" ? textLines(dom, base, zoom, natural, newSum) : [];
+        let k = lines.findIndex((line) => line.bottom > contentBottom(p) + 0.5);
+        if (k >= 0 && lines.length - k === 1 && k >= 3) k--;
+        if (k >= 2) {
+          let at = k;
+          while (at >= 0 && at < lines.length) {
+            const line = lines[at];
+            const target = editor.view.posAtCoords({ left: line.clientLeft + 1, top: line.clientTop + (line.clientBottom - line.clientTop) / 2 });
+            if (!target) break;
+            const gap = startPage(target.pos, line.top, true);
+            for (const later of lines.slice(at)) { later.top += gap; later.bottom += gap; }
+            bottom += gap;
+            // A paragraph longer than a sheet breaks again.
+            at = lines.findIndex((l, i) => i > at && l.bottom > contentBottom(p) + 0.5);
+            if (at >= 0 && lines.length - at === 1 && at - 1 > lines.indexOf(line)) at--;
+          }
+          first = false;
+          previous = { pos, top, heading: false, first: false, page: p };
+          breakNext = false;
+          continue;
+        }
+        // A heading at the foot of a sheet goes on with the text after it.
+        if (!breakNext && previous?.heading && !previous.first && previous.page === p) {
+          const gap = startPage(previous.pos, previous.top);
+          top += gap;
+          bottom += gap;
+        } else {
+          const gap = startPage(pos, top);
+          top += gap;
+          bottom += gap;
+        }
         first = true;
       }
       // A block taller than a sheet runs on; the next block goes where it ends.
-      while (top + height > contentBottom(p) + 0.5 && top + height > contentTop(p + 1)) p++;
+      while (bottom > contentBottom(p) + 0.5 && bottom > contentTop(p + 1)) p++;
+      previous = { pos, top, heading: node.type.name === "heading", first, page: p };
       first = false;
       breakNext = Boolean(dom.querySelector?.(".qi-pagebreak")) && !dom.textContent.replace(/Page break/g, "").trim();
     }
@@ -92,6 +159,7 @@ export function createPageView({ page, getEditor, getZoom, getLayout, paperSize,
       sheets.replaceChildren(...starts.map((y) => h("div.pv-sheet", { style: { top: `${y}px`, height: `${g.height}px` } })));
     }
     const same = gaps.length === old.size && gaps.every((gap) => Math.abs((old.get(gap.pos) ?? -99) - gap.height) < 1);
+    if (same) passes = 0;
     if (!same && passes < 4) { passes++; editor.setPageGaps(gaps); return; }
     onDraw?.();
   }

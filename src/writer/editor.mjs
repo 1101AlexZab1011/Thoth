@@ -278,14 +278,16 @@ const pagesPlugin = $prose(() => new Plugin({
     apply(tr, set) {
       const gaps = tr.getMeta(pagesKey);
       if (!gaps) return set.map(tr.mapping, tr.doc);
-      return DecorationSet.create(tr.doc, gaps.map(({ pos, height, page }) => Decoration.widget(pos, () => {
-        const el = document.createElement("div");
+      // A gap inside a paragraph (the paragraph goes on on the next sheet) is a block-level span.
+      return DecorationSet.create(tr.doc, gaps.map(({ pos, height, page, inline = false }) => Decoration.widget(pos, () => {
+        const el = document.createElement(inline ? "span" : "div");
+        if (inline) el.style.display = "block";
         el.className = "pv-gap";
         el.contentEditable = "false";
         el.style.height = `${height}px`;
         el.dataset.page = String(page);
         return el;
-      }, { side: -1, key: `gap-${page}-${Math.round(height * 10)}`, ignoreSelection: true, height })));
+      }, { side: -1, key: `gap-${page}-${inline ? "i" : "b"}-${Math.round(height * 10)}`, ignoreSelection: true, height, inline })));
     },
   },
   props: { decorations: (state) => pagesKey.getState(state) },
