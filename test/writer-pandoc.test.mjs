@@ -86,6 +86,26 @@ test("blocks with escaped brackets or carets are left alone", () => {
   assert.ok(!nodes.some((n) => ["pandocSpan", "superscript"].includes(n.type)));
 });
 
+test("a comment pairs its start and end around the commented text", () => {
+  const md = 'A [Check *this* claim]{.comment-start id="3" author="Andrej" date="2026-11-16T10:00:00Z"}commented **passage**[]{.comment-end id="3"} ends.';
+  const [, comment, rest] = inlines(md);
+  assert.equal(comment.type, "pandocComment");
+  assert.deepEqual([comment.id, comment.author, comment.date, comment.text], ["3", "Andrej", "2026-11-16T10:00:00Z", "Check this claim"]);
+  assert.deepEqual(comment.children.map((c) => c.type), ["text", "strong"]);
+  assert.equal(rest.value, " ends.");
+  // Written back with the comment as plain text (formatting inside a comment is not kept).
+  assert.equal(roundTrip(md), 'A [Check this claim]{.comment-start id="3" author="Andrej" date="2026-11-16T10:00:00Z"}commented **passage**[]{.comment-end id="3"} ends.');
+  // A comment written with brackets in it gets parentheses, so its paragraph stays readable.
+  const tree = parse(md);
+  tree.children[0].children[1].text = "see [1] and [2]";
+  assert.match(processor.stringify(tree), /\[see \(1\) and \(2\)\]\{\.comment-start/);
+});
+
+test("a comment whose end is elsewhere stays as spans", () => {
+  const nodes = inlines('A [note]{.comment-start id="1" author="A" date="D"}*start of[]{.comment-end id="1"} it*');
+  assert.ok(!nodes.some((n) => n.type === "pandocComment"));
+});
+
 test("inline code and math are not read for spans or scripts", () => {
   const nodes = inlines("`[a]{.b}` and $x^2^$");
   assert.ok(!nodes.some((n) => ["pandocSpan", "superscript"].includes(n.type)));

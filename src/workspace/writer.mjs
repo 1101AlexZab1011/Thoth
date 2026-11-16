@@ -157,8 +157,10 @@ export class Writer {
     await mkdir(dir, { recursive: true });
     const meta = await renderMetadata(settings, to, {
       lineNumbersTex: async () => { const file = join(dir, "lineno.tex"); await writeFile(file, LINENO_TEX); return file; },
+      markupTex: async () => { const file = join(dir, "review-markup.tex"); await writeFile(file, MARKUP_TEX); return file; },
+      reviewFilter: async () => { const file = join(dir, "review.lua"); await writeFile(file, REVIEW_LUA); return file; },
       referenceDocx: (options) => this.referenceDocx(dir, options),
-    });
+    }, { hasReview: REVIEW_SPANS.test(await readFile(full, "utf8")) });
     if (!Object.keys(meta).length) return [];
     const file = join(dir, `${createHash("sha1").update(full).digest("hex").slice(0, 16)}.yml`);
     await writeFile(file, YAML.stringify(meta));
@@ -303,6 +305,52 @@ export class Writer {
 export { layoutOf };
 
 const LINENO_TEX = "\\usepackage{lineno}\n\\linenumbers\n";
+// \wrins and \wrdel with whatever the TeX installation has (lua-ul under LuaLaTeX, else ulem, else
+// colour alone), so a missing package never stops the render or starts an install.
+const MARKUP_TEX = String.raw`\usepackage{xcolor}
+\ifdefined\directlua\IfFileExists{lua-ul.sty}{\usepackage{lua-ul}\providecommand{\wrins}[1]{{\color{blue}\underLine{##1}}}\providecommand{\wrdel}[1]{{\color{red}\strikeThrough{##1}}}}{}\fi
+\IfFileExists{ulem.sty}{\usepackage[normalem]{ulem}\providecommand{\wrins}[1]{{\color{blue}\uline{##1}}}\providecommand{\wrdel}[1]{{\color{red}\sout{##1}}}}{}
+\providecommand{\wrins}[1]{{\color{blue}#1}}
+\providecommand{\wrdel}[1]{{\color{red}[#1]}}
+`;
+const REVIEW_SPANS = /\]\{[^}\n]*\.(?:insertion|deletion|comment-start)\b/;
+
+// Tracked changes and comments (Pandoc's form, as the Writer and Word write them) for formats other
+// than Word, which has its own: "final" shows the text with every change accepted and no comments;
+// "markup" shows insertions underlined in blue, deletions struck out in red and comments as notes.
+const REVIEW_LUA = `local mode = "final"
+local function has(el, name)
+  for _, c in ipairs(el.classes) do if c == name then return true end end
+  return false
+end
+local function wrap(content, before, after)
+  local out = pandoc.List({ pandoc.RawInline(FORMAT:match("latex") and "latex" or "html", before) })
+  out:extend(content)
+  out:insert(pandoc.RawInline(FORMAT:match("latex") and "latex" or "html", after))
+  return out
+end
+local latex = function() return FORMAT:match("latex") ~= nil end
+return {
+  { Meta = function(meta) if meta["writer-review"] then mode = pandoc.utils.stringify(meta["writer-review"]) end end },
+  { Span = function(el)
+      if has(el, "insertion") then
+        if mode ~= "markup" then return el.content end
+        return latex() and wrap(el.content, "\\\\wrins{", "}") or wrap(el.content, "<ins>", "</ins>")
+      elseif has(el, "deletion") then
+        if mode ~= "markup" then return {} end
+        return latex() and wrap(el.content, "\\\\wrdel{", "}") or wrap(el.content, "<del>", "</del>")
+      elseif has(el, "comment-start") then
+        if mode ~= "markup" then return {} end
+        local who = el.attributes.author or ""
+        local note = pandoc.List({ pandoc.Strong({ pandoc.Str(who ~= "" and (who .. ":") or "Comment:") }), pandoc.Space() })
+        note:extend(el.content)
+        return pandoc.Note({ pandoc.Plain(note) })
+      elseif has(el, "comment-end") then
+        return {}
+      end
+    end },
+}
+`;
 
 /** A document's YAML header as an object ({} without one, or when it does not parse). */
 export function documentSettings(source) {
@@ -318,13 +366,22 @@ export function documentSettings(source) {
  *   the layout keys       a Word template with the same page and type (PDF reads them itself)
  * `make` builds the files: lineNumbersTex() and referenceDocx(options) resolve to paths.
  */
-export async function renderMetadata(settings, to, make) {
+export async function renderMetadata(settings, to, make, { hasReview = false } = {}) {
   const writer = settings["writer-options"] && typeof settings["writer-options"] === "object" ? settings["writer-options"] : {};
   const lineNumbers = writer["line-numbers"] === true;
+  const markup = writer.review === "markup";
+  const latex = to === "pdf" || to === "latex" || to === "beamer";
   const meta = {};
-  if ((to === "pdf" || to === "latex" || to === "beamer") && lineNumbers) {
-    meta["include-in-header"] = [...[].concat(settings["include-in-header"] ?? []), { file: await make.lineNumbersTex() }];
+  const headers = [];
+  if (latex && lineNumbers) headers.push({ file: await make.lineNumbersTex() });
+  // Word keeps tracked changes and comments as its own; every other format gets the final text,
+  // or the markup when the document asks for it.
+  if (hasReview && to !== "docx") {
+    meta.filters = [...[].concat(settings.filters ?? []), await make.reviewFilter()];
+    meta["writer-review"] = markup ? "markup" : "final";
+    if (latex && markup) headers.push({ file: await make.markupTex() });
   }
+  if (headers.length) meta["include-in-header"] = [...[].concat(settings["include-in-header"] ?? []), ...headers];
   const ownReference = settings["reference-doc"] ?? settings.format?.docx?.["reference-doc"];
   const layout = layoutOf(settings);
   if (to === "docx" && !ownReference && (lineNumbers || Object.keys(layout).length)) {

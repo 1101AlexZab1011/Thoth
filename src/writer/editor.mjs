@@ -17,19 +17,21 @@ import { clipboard } from "@milkdown/kit/plugin/clipboard";
 import { listener, listenerCtx } from "@milkdown/kit/plugin/listener";
 import { $node, $mark, $remark, $view, $prose } from "@milkdown/kit/utils";
 import { toggleMark } from "@milkdown/kit/prose/commands";
+import { ReplaceStep } from "@milkdown/kit/prose/transform";
+import { Fragment, Slice } from "@milkdown/kit/prose/model";
 import { EditorState, Plugin, PluginKey, TextSelection } from "@milkdown/kit/prose/state";
 import { Decoration, DecorationSet } from "@milkdown/kit/prose/view";
 import remarkMath from "remark-math";
 import YAML from "yaml";
 import { assemble, gapsOf, inlineTokens, splitQuarto } from "./quarto.mjs";
-import { pandocInlines, pandocHandlers } from "./pandoc.mjs";
+import { pandocInlines, pandocHandlers, parseAttrs, formatAttrs } from "./pandoc.mjs";
 import { notesTokens } from "../notes/vault.mjs";
 import { notesPlugins, notesApi } from "../notes/editor-notes.mjs";
 
 // ------------------------------------------------------ remark: safety net --
 
 const BLOCK_TYPES = new Set(["paragraph", "heading", "thematicBreak", "blockquote", "list", "listItem", "code", "table", "tableRow", "tableCell", "footnoteDefinition", "quartoBlock"]);
-const INLINE_TYPES = new Set(["text", "emphasis", "strong", "inlineCode", "link", "image", "break", "html", "delete", "footnoteReference", "inlineMath", "quartoInline", "pandocSpan", "superscript", "subscript"]);
+const INLINE_TYPES = new Set(["text", "emphasis", "strong", "inlineCode", "link", "image", "break", "html", "delete", "footnoteReference", "inlineMath", "quartoInline", "pandocSpan", "pandocComment", "superscript", "subscript"]);
 const BLOCK_PARENTS = new Set(["root", "blockquote", "listItem", "footnoteDefinition"]);
 const CONTAINERS = new Set(["list", "table", "tableRow"]);
 
@@ -126,13 +128,16 @@ const quartoInline = $node("quarto_inline", () => ({
 // [text]{.underline}, [text]{.mark}, [text]{.smallcaps}, ^sup^, ~sub~. A span with other
 // attributes stays a span and keeps its attribute text.
 
-function spanMark(name, kind, { tag, cls, attrs: initial }) {
+function spanMark(name, kinds, { tag, cls, attrs: initial, title, style, spec = {} }) {
+  const own = [].concat(kinds);
   return $mark(name, () => ({
     attrs: { attrs: { default: initial } },
-    parseDOM: [{ tag: cls ? `${tag}.${cls}` : tag, getAttrs: (dom) => ({ attrs: dom.dataset.attrs || initial }) }],
-    toDOM: (mark) => [tag, { ...(cls ? { class: cls } : {}), "data-attrs": mark.attrs.attrs, ...(kind === "span" ? { title: mark.attrs.attrs } : {}) }, 0],
+    ...spec,
+    // A class makes the rule specific (del.wr-deletion is ours, a plain <del> is strikethrough).
+    parseDOM: [{ tag: cls ? `${tag}.${cls}` : tag, priority: cls ? 60 : 50, getAttrs: (dom) => ({ attrs: dom.dataset.attrs || initial }) }],
+    toDOM: (mark) => [tag, { ...(cls ? { class: cls } : {}), "data-attrs": mark.attrs.attrs, ...(title ? { title: title(mark.attrs.attrs) } : {}), ...(style ? { style: style(mark.attrs.attrs) } : {}) }, 0],
     parseMarkdown: {
-      match: (node) => node.type === "pandocSpan" && node.kind === kind,
+      match: (node) => node.type === "pandocSpan" && own.includes(node.kind),
       runner: (state, node, type) => { state.openMark(type, { attrs: node.attrs }); state.next(node.children); state.closeMark(type); },
     },
     toMarkdown: {
@@ -155,13 +160,52 @@ function scriptMark(name, tag) {
   }));
 }
 
+/** Who made a tracked change, and when, from its attributes: { author, date }. */
+export function changeInfo(attrs) {
+  const { attributes = {} } = parseAttrs(attrs) ?? {};
+  return { author: attributes.author ?? "", date: attributes.date ?? "" };
+}
+/** Each author's changes in a colour of their own, as in Word. */
+export function authorHue(author) {
+  let hash = 7;
+  for (const ch of String(author)) hash = (hash * 31 + ch.codePointAt(0)) | 0;
+  return [212, 4, 145, 28, 268, 175, 330, 95][Math.abs(hash) % 8];
+}
+const changeStyle = (attrs) => `--chg-hue: ${authorHue(changeInfo(attrs).author)}`;
+const changeTitle = (verb) => (attrs) => {
+  const { author, date } = changeInfo(attrs);
+  const when = date ? new Date(date) : null;
+  return `${verb}${author ? ` by ${author}` : ""}${when && !Number.isNaN(when.getTime()) ? `, ${when.toLocaleString()}` : ""}`;
+};
+
+/** A comment on a passage: the mark spans the commented text and carries the comment itself. */
+const commentMark = $mark("comment", () => ({
+  attrs: { id: { default: "" }, author: { default: "" }, date: { default: "" }, text: { default: "" } },
+  excludes: "",
+  inclusive: false,
+  parseDOM: [{ tag: "span.wr-comment", getAttrs: (dom) => ({ id: dom.dataset.commentId ?? "", author: dom.dataset.author ?? "", date: dom.dataset.date ?? "", text: dom.dataset.text ?? "" }) }],
+  toDOM: (mark) => ["span", { class: "wr-comment", "data-comment-id": mark.attrs.id, "data-author": mark.attrs.author, "data-date": mark.attrs.date, "data-text": mark.attrs.text }, 0],
+  parseMarkdown: {
+    match: (node) => node.type === "pandocComment",
+    runner: (state, node, type) => { state.openMark(type, { id: node.id, author: node.author, date: node.date, text: node.text }); state.next(node.children); state.closeMark(type); },
+  },
+  toMarkdown: {
+    match: (mark) => mark.type.name === "comment",
+    runner: (state, mark) => { state.withMark(mark, "pandocComment", undefined, { ...mark.attrs }); },
+  },
+}));
+
 const formatMarks = [
   spanMark("underline", "underline", { tag: "u", attrs: "{.underline}" }),
   spanMark("highlight", "highlight", { tag: "mark", attrs: "{.mark}" }),
   spanMark("smallcaps", "smallcaps", { tag: "span", cls: "wr-smallcaps", attrs: "{.smallcaps}" }),
-  spanMark("pandoc_span", "span", { tag: "span", cls: "wr-span", attrs: "{}" }),
+  // Any other span, and a comment whose start and end could not be paired, keep their attributes.
+  spanMark("pandoc_span", ["span", "comment-start", "comment-end"], { tag: "span", cls: "wr-span", attrs: "{}", title: (attrs) => attrs }),
+  spanMark("insertion", "insertion", { tag: "ins", cls: "wr-insertion", attrs: "{.insertion}", title: changeTitle("Inserted"), style: changeStyle, spec: { excludes: "deletion" } }),
+  spanMark("deletion", "deletion", { tag: "del", cls: "wr-deletion", attrs: "{.deletion}", title: changeTitle("Deleted"), style: changeStyle, spec: { excludes: "insertion", inclusive: false } }),
   scriptMark("superscript", "sup"),
   scriptMark("subscript", "sub"),
+  commentMark,
 ];
 
 // ----------------------------------------------------------- node views --
@@ -388,6 +432,101 @@ export function searchPattern(query, { matchCase = false, wholeWord = false, reg
   try { return new RegExp(source, `g${matchCase ? "" : "i"}u`); } catch (error) { return { error: error.message }; }
 }
 
+// ------------------------------------------------------- track changes --
+//
+// With tracking on, what the user types gets an insertion mark (author, date), and what they delete
+// stays in the text with a deletion mark, the way Word and ONLYOFFICE track changes; deleting their
+// own insertion removes it for real. Formatting and list or paragraph structure are not tracked.
+// Undo and our own edits (accepting a change, adding a comment) carry the skip meta.
+
+const trackKey = new PluginKey("writer-track");
+const SKIP = { skip: true };
+const now = () => new Date().toISOString().replace(/\.\d+Z$/, "Z");
+
+/** The slice's content as deleted: own insertions dropped, the rest marked with `mark`. */
+function asDeleted(fragment, { mark, insertion, author }) {
+  const out = [];
+  fragment.forEach((node) => {
+    if (node.isText || (node.isInline && node.isLeaf)) {
+      const inserted = insertion.isInSet(node.marks);
+      if (inserted && changeInfo(inserted.attrs.attrs).author === author) return; // one's own insertion: gone
+      if (mark.type.isInSet(node.marks)) { out.push(node); return; }
+      out.push(node.mark(mark.addToSet(node.marks.filter((m) => m.type !== insertion))));
+      return;
+    }
+    out.push(node.copy(asDeleted(node.content, { mark, insertion, author })));
+  });
+  return Fragment.fromArray(out);
+}
+
+/**
+ * The mark for a change by `author` at `pos`: the one beside it when that is theirs (so typing on,
+ * or deleting on, extends one change instead of making a span per keystroke), else a new one.
+ */
+function changeMark(doc, pos, type, author, date) {
+  const $pos = doc.resolve(Math.max(0, Math.min(pos, doc.content.size)));
+  for (const node of [$pos.nodeBefore, $pos.nodeAfter]) {
+    const near = node && type.isInSet(node.marks);
+    if (near && changeInfo(near.attrs.attrs).author === author) return near;
+  }
+  return type.create({ attrs: formatAttrs({ classes: [type.name], attributes: { author, date } }) });
+}
+const hasInline = (fragment) => { let found = false; fragment.descendants((n) => { if (n.isInline) found = true; return !found; }); return found; };
+
+const trackPlugin = $prose(() => new Plugin({
+  key: trackKey,
+  state: {
+    init: () => ({ on: false, author: "" }),
+    apply: (tr, value) => ({ ...value, ...(tr.getMeta(trackKey)?.config ?? {}) }),
+  },
+  appendTransaction(transactions, oldState, newState) {
+    const { on, author } = trackKey.getState(newState);
+    if (!on) return null;
+    const { insertion, deletion } = newState.schema.marks;
+    const date = now();
+    const ops = [];
+    transactions.forEach((tr, t) => {
+      if (!tr.docChanged || tr.getMeta(trackKey)?.skip || tr.getMeta("history$") || tr.getMeta("addToHistory") === false) return;
+      const before = t === 0 ? oldState.selection : transactions[t - 1].selection;
+      tr.steps.forEach((step, i) => {
+        if (!(step instanceof ReplaceStep)) return;
+        // Where the step's result sits in the final document.
+        const after = tr.mapping.slice(i + 1);
+        const rest = (pos, assoc) => transactions.slice(t + 1).reduce((p, later) => later.mapping.map(p, assoc), after.map(pos, assoc));
+        const from = rest(step.from, -1);
+        const to = rest(step.from + step.slice.size, 1);
+        const deleted = step.from < step.to ? tr.docs[i].slice(step.from, step.to) : null;
+        const backward = before.empty && before.from === step.to;
+        ops.push({ from, to, deleted, backward, forward: before.empty && before.from === step.from });
+      });
+    });
+    if (!ops.length) return null;
+    const out = newState.tr.setMeta(trackKey, SKIP);
+    let cursor = null;
+    for (const op of ops.sort((a, b) => b.from - a.from)) {
+      if (op.to > op.from) {
+        out.removeMark(op.from, op.to, deletion);
+        out.removeMark(op.from, op.to, insertion);
+        out.addMark(op.from, op.to, changeMark(out.doc, op.from, insertion, author, date));
+      }
+      if (op.deleted && hasInline(op.deleted.content)) {
+        const kept = asDeleted(op.deleted.content, { mark: changeMark(out.doc, op.from, deletion, author, date), insertion, author });
+        if (hasInline(kept)) {
+          const size = out.doc.content.size;
+          out.replace(op.from, op.from, new Slice(kept, op.deleted.openStart, op.deleted.openEnd));
+          const added = out.doc.content.size - size;
+          // Backspace leaves the cursor before what it struck out, so the next one goes on to the left.
+          cursor = op.backward ? op.from : op.from + added + (op.to - op.from);
+        }
+      }
+    }
+    if (cursor !== null) {
+      try { out.setSelection(TextSelection.near(out.doc.resolve(Math.min(cursor, out.doc.content.size)), -1)); } catch { /* keep the mapped one */ }
+    }
+    return out.docChanged ? out : null;
+  },
+}));
+
 // ------------------------------------------------- supervisor review --
 //
 // A review is a region (the passage the user selected) with comments on parts
@@ -503,6 +642,7 @@ export async function createWriter(root, hooks = {}, options = {}) {
     .use($view(imageSchema.node, () => imageView(hooks)))
     .use(grammarPlugin)
     .use(findPlugin)
+    .use(trackPlugin)
     .use(reviewPlugin)
     .use(notesLayer.plugins.flat())
     .create();
@@ -811,6 +951,101 @@ export async function createWriter(root, hooks = {}, options = {}) {
       }
       if (count) view.dispatch(tr.scrollIntoView());
       return count;
+    },
+
+    // --- track changes and comments --------------------------------------------
+
+    /** Turn tracking on or off; `author` names who makes the changes. */
+    setTracking(on, author = "") {
+      view.dispatch(view.state.tr.setMeta(trackKey, { config: { on: Boolean(on), author } }).setMeta("addToHistory", false));
+    },
+    get tracking() { return trackKey.getState(view.state); },
+
+    /** Tracked changes in document order: [{ kind, from, to, author, date, text }], adjacent pieces joined. */
+    changes() {
+      const out = [];
+      const { insertion, deletion } = schema.marks;
+      view.state.doc.descendants((node, pos) => {
+        if (!node.isInline) return true;
+        const mark = insertion.isInSet(node.marks) ?? deletion.isInSet(node.marks);
+        if (!mark) return false;
+        const kind = mark.type === insertion ? "insertion" : "deletion";
+        const last = out.at(-1);
+        const text = node.isText ? node.text : node.attrs.source ?? "";
+        if (last && last.kind === kind && last.attrs === mark.attrs.attrs && last.to === pos) { last.to = pos + node.nodeSize; last.text += text; }
+        else out.push({ kind, from: pos, to: pos + node.nodeSize, attrs: mark.attrs.attrs, text, ...changeInfo(mark.attrs.attrs) });
+        return false;
+      });
+      return out.map(({ attrs, ...change }) => change);
+    },
+
+    /**
+     * Accept or reject the changes that touch [from, to] (all of them without a range). Accepting
+     * keeps an insertion and drops a deletion; rejecting does the opposite. Returns how many.
+     */
+    resolveChanges(accept, { from = 0, to = view.state.doc.content.size } = {}) {
+      const touched = this.changes().filter((c) => c.to >= from && c.from <= to);
+      if (!touched.length) return 0;
+      const { insertion, deletion } = schema.marks;
+      const tr = view.state.tr.setMeta(trackKey, SKIP);
+      for (const change of [...touched].sort((a, b) => b.from - a.from)) {
+        const keep = (change.kind === "insertion") === accept;
+        if (keep) tr.removeMark(change.from, change.to, change.kind === "insertion" ? insertion : deletion);
+        else tr.delete(change.from, change.to);
+      }
+      view.dispatch(tr.scrollIntoView());
+      return touched.length;
+    },
+
+    /** Suggest replacing [from, to] with `text` as a tracked change by `author` (tracking on or off). */
+    suggest(from, to, text, author) {
+      const { insertion, deletion } = schema.marks;
+      const date = now();
+      const tr = view.state.tr.setMeta(trackKey, SKIP);
+      if (text) tr.insert(to, schema.text(text, [insertion.create({ attrs: formatAttrs({ classes: ["insertion"], attributes: { author, date } }) })]));
+      if (to > from) tr.addMark(from, to, deletion.create({ attrs: formatAttrs({ classes: ["deletion"], attributes: { author, date } }) }));
+      view.dispatch(tr.scrollIntoView());
+    },
+
+    /** Comments in document order: [{ id, author, date, text, from, to, quote }]. */
+    comments() {
+      const byId = new Map();
+      view.state.doc.descendants((node, pos) => {
+        if (!node.isInline) return true;
+        for (const mark of node.marks) {
+          if (mark.type.name !== "comment") continue;
+          const entry = byId.get(mark.attrs.id) ?? { ...mark.attrs, from: pos, to: pos, quote: "" };
+          entry.to = pos + node.nodeSize;
+          entry.quote += node.isText ? node.text : node.attrs.source ?? "";
+          byId.set(mark.attrs.id, entry);
+        }
+        return false;
+      });
+      return [...byId.values()].sort((a, b) => a.from - b.from);
+    },
+
+    /** Comment on [from, to]; returns the new comment's id. */
+    addComment(from, to, text, author) {
+      const ids = this.comments().map((c) => Number(c.id)).filter(Number.isFinite);
+      const id = String(ids.length ? Math.max(...ids) + 1 : 1);
+      view.dispatch(view.state.tr.addMark(from, to, schema.marks.comment.create({ id, author, date: now(), text })).setMeta(trackKey, SKIP));
+      return id;
+    },
+
+    /** Change a comment's text (`text`), or remove it (`text` null): the commented text stays. */
+    updateComment(id, text) {
+      const tr = view.state.tr.setMeta(trackKey, SKIP);
+      view.state.doc.descendants((node, pos) => {
+        if (!node.isInline) return true;
+        for (const mark of node.marks) {
+          if (mark.type.name !== "comment" || mark.attrs.id !== id) continue;
+          tr.removeMark(pos, pos + node.nodeSize, mark);
+          if (text !== null) tr.addMark(pos, pos + node.nodeSize, mark.type.create({ ...mark.attrs, text }));
+        }
+        return false;
+      });
+      if (tr.docChanged) view.dispatch(tr);
+      return tr.docChanged;
     },
 
     // --- document settings (the YAML header) ----------------------------------

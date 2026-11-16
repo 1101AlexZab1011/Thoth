@@ -194,7 +194,15 @@ content when asked.
   document. `writer_settings` reads and sets the layout: paper, margins,
   columns, font, size, line spacing, contents, bibliography, and line
   numbers in the export (`writer-options.line-numbers`). `writer_view`
-  shows line numbers in the margin or zooms.
+  shows line numbers in the margin, the page view or zooms.
+- **Review like a co-author.** When the user should decide on a change,
+  propose it with `writer_suggest` (a tracked change they accept or reject)
+  instead of rewriting, and put questions on the text with `writer_comment`.
+  Both carry into the Word export as Word's own tracked changes and comments.
+  `writer_changes` lists what is pending; accept or reject only when asked.
+  With track changes on (Review tab), every edit is tracked: yours through
+  `writer_insert`, `writer_replace_selection` and `writer_find_replace` under
+  your name. `files_edit` bypasses tracking; avoid it then.
 - `writer_render` builds the PDF and shows it in the viewer. On failure it
   returns the errors: fix them and render again. `writer_export` writes a
   Word file (`docx`) or a web page next to the document.

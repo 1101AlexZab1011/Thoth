@@ -129,6 +129,34 @@ body { display: flex; flex-direction: column; background: var(--mw-bg); }
 .fd-bar.invalid .fd-count { color: var(--mw-danger); }
 .fd-bar .icon-btn[aria-pressed="true"] { background: var(--mw-primary-soft); color: var(--mw-primary-soft-text); }
 
+/* --- review panel (writer-review.js) -------------------------------------------- */
+.rp {
+  width: 300px; flex: none; overflow: auto; padding: 10px 10px 40px; border-left: 1px solid var(--mw-border); background: var(--mw-surface);
+  display: flex; flex-direction: column; gap: 8px;
+}
+.rp-section { display: flex; align-items: center; gap: 8px; margin: 6px 2px 0; }
+.rp-section h2 { display: flex; align-items: center; gap: 6px; margin: 0; font-size: 11.5px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--mw-text-3); font-weight: 650; }
+.rp-all { margin-left: auto; display: flex; gap: 4px; }
+.rp-all .btn.small { height: 24px; padding: 0 8px; font-size: 11.5px; }
+.rp-empty { margin: 0 4px; font-size: 12.5px; color: var(--mw-text-3); }
+.rp-card { padding: 8px 10px; border: 1px solid var(--mw-border); border-radius: var(--mw-radius); background: var(--mw-bg); cursor: pointer; display: grid; gap: 5px; }
+.rp-card:hover { border-color: var(--mw-border-strong); }
+.rp-card.active { border-color: rgb(225, 160, 0); box-shadow: 0 0 0 1px rgb(225, 160, 0); }
+.rp-head { display: flex; align-items: center; gap: 8px; }
+.rp-avatar {
+  width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; flex: none;
+  background: hsl(var(--chg-hue, 212) 70% 92%); color: hsl(var(--chg-hue, 212) 60% 32%); font: 700 12px var(--mw-font);
+}
+.rp-who { display: flex; flex-direction: column; line-height: 1.25; font-size: 12.5px; min-width: 0; }
+.rp-who span { color: var(--mw-text-3); font-size: 11.5px; }
+.rp-quote { font: italic 12.5px "Source Serif 4", Georgia, serif; color: var(--mw-text-2); border-left: 2px solid rgba(225, 160, 0, 0.75); padding-left: 7px; }
+.rp-text { font-size: 13px; line-height: 1.4; overflow-wrap: anywhere; }
+.rp-text ins { color: hsl(var(--chg-hue, 212) 70% 38%); text-decoration: underline; }
+.rp-text del { color: hsl(var(--chg-hue, 212) 55% 45%); }
+.rp-kind { color: var(--mw-text-3); font-size: 12px; }
+.rp-actions { display: flex; justify-content: flex-end; gap: 2px; }
+.statusbar .sb-track { background: var(--mw-primary-soft); color: var(--mw-primary-soft-text); font-weight: 600; }
+
 /* --- page view (writer-pages.js) ---------------------------------------------- */
 .page.page-view {
   max-width: none; width: var(--pv-width); min-height: var(--pv-height); box-sizing: border-box; border-radius: 2px;

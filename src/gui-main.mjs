@@ -358,8 +358,26 @@ register("writer_settings", "Read, or change with `set`, the open document's set
   set: z.record(z.string(), z.any()).optional(),
 }, async ({ set }) => text(await gui("page", { page: "writer", type: "settings", set })));
 
-register("writer_view", "The Writer's view for the user: line numbers in the margin, zoom (0.5–2), the navigation outline.", {
+register("writer_suggest", "Propose an edit as a tracked change the user accepts or rejects (Review → Accept/Reject): `text` (an exact passage within one paragraph, as writer_read shows it) is marked deleted and `replacement` inserted after it, both by `author`. Use this instead of rewriting when the user should decide. An empty replacement proposes a deletion.", {
+  text: z.string(),
+  replacement: z.string(),
+  author: z.string().default("Claude"),
+}, async (args) => text(await gui("page", { page: "writer", type: "suggest", ...args })));
+
+register("writer_comment", "Leave a comment on a passage, the way Word does: `text` (an exact passage within one paragraph) is highlighted and the comment shown in the Writer's review panel; it travels into the Word export as a Word comment.", {
+  text: z.string(),
+  comment: z.string(),
+  author: z.string().default("Claude"),
+}, async (args) => text(await gui("page", { page: "writer", type: "comment", ...args })));
+
+register("writer_changes", "The open document's tracked changes and comments (author, date, text), and whether track changes is on. `action` accept/reject resolves the changes touching `text`, or all of them; only do that when the user asks.", {
+  action: z.enum(["accept", "reject"]).optional(),
+  text: z.string().optional(),
+}, async (args) => text(await gui("page", { page: "writer", type: "changes", ...args })));
+
+register("writer_view", "The Writer's view for the user: line numbers in the margin, page view (the page as the PDF sets it, with page ends), zoom (0.5–2), the navigation outline.", {
   lineNumbers: z.boolean().optional(),
+  pageView: z.boolean().optional(),
   zoom: z.number().min(0.5).max(2).optional(),
   outline: z.boolean().optional(),
 }, async (args) => text(await gui("page", { page: "writer", type: "view", ...args })));

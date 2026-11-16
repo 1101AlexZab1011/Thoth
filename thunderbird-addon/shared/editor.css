@@ -33,6 +33,13 @@
 .wr-doc .wr-smallcaps { font-variant: small-caps; letter-spacing: 0.02em; }
 .wr-doc .wr-span { border-bottom: 1px dotted var(--mw-border-strong); }
 .wr-doc sup, .wr-doc sub { font-size: 0.72em; line-height: 0; }
+/* Tracked changes: each author in a hue of their own (--chg-hue, set per change). */
+.wr-doc ins.wr-insertion { text-decoration: underline; text-decoration-thickness: 1.5px; text-underline-offset: 3px; color: hsl(var(--chg-hue, 212) 70% 38%); text-decoration-color: hsl(var(--chg-hue, 212) 70% 45%); }
+.wr-doc del.wr-deletion { text-decoration: line-through; text-decoration-thickness: 1.5px; color: hsl(var(--chg-hue, 212) 55% 45%); opacity: 0.85; }
+.show-final .wr-doc del.wr-deletion, .show-original .wr-doc ins.wr-insertion { display: none; }
+.show-final .wr-doc ins.wr-insertion, .show-original .wr-doc del.wr-deletion { text-decoration: none; color: inherit; opacity: 1; }
+.wr-doc .wr-comment { background: rgba(255, 196, 0, 0.22); border-bottom: 2px solid rgba(225, 160, 0, 0.75); }
+.wr-doc .wr-comment.active { background: rgba(255, 170, 0, 0.42); }
 .wr-doc .wr-find { background: rgba(255, 196, 0, 0.35); border-radius: 2px; }
 .wr-doc .wr-find-current { background: rgba(255, 140, 0, 0.65); outline: 1px solid rgb(230, 120, 0); }
 .wr-doc .ProseMirror-selectednode { outline: 2px solid var(--mw-primary); outline-offset: 2px; border-radius: 4px; }

@@ -10,10 +10,11 @@ import { accel } from "./shared/keys.js";
 import { dirOf, nameOf, resolvePath, tildePath } from "./shared/paths.js";
 import { $, h, iconButton, contextMenu, background, toast, registerPage, ask } from "./shared/page.js";
 import { DocTabs } from "./shared/doctabs.js";
-import { createWriter, merge3, labels, layoutOf, paperSize } from "./vendor/writer/writer.mjs";
+import { createWriter, merge3, labels, layoutOf, paperSize, authorHue } from "./vendor/writer/writer.mjs";
 import { createFind } from "./writer-find.js";
 import { createLineNumbers } from "./writer-lines.js";
 import { createPageView } from "./writer-pages.js";
+import { createReviewPanel } from "./writer-review.js";
 
 const GRAMMAR_DELAY = 1800;
 const BACKUPS = "@state/writer-backups";
@@ -23,6 +24,7 @@ const ui = {
   toolbar: $("#toolbar"), conflict: $("#conflict"), outline: $("#outline"), scroll: $("#scroll"), start: $("#start"),
   page: $("#page"), editorRoot: $("#editor"), statusbar: $("#statusbar"), where: $("#where"), words: $("#words"), pageCount: $("#page-count"),
   grammarCount: $("#grammar-count"), imageInput: $("#image-input"), zoom: $("#zoom"), language: $("#language"), body: $("#body"),
+  trackState: $("#track-state"),
 };
 
 // One state object per tab; `doc` and `editor` always point at the active tab's.
@@ -39,6 +41,8 @@ let grammarOn = false;
 let grammarLanguage = "en-US";
 let zoom = 1;
 let ribbonTab = "Home";
+let author = "";
+let display = "markup"; // markup | final | original
 let grammarTimer = null;
 const grammarCache = new Map(); // block text → matches
 const imageUrls = new Map();
@@ -86,9 +90,10 @@ async function createTabEditor(tab) {
       find.refresh();
       lines.schedule();
       pages.refresh();
+      review.schedule();
       scheduleRibbon();
     },
-    onSelection: () => { if (tab === doc) { updateWhere(); scheduleRibbon(); } },
+    onSelection: () => { if (tab === doc) { updateWhere(); scheduleRibbon(); review.schedule(); } },
     resolveImage: (src) => resolveImage(tab, src),
     editInline: editChip,
     describeInline: (attrs, el) => {
@@ -177,6 +182,8 @@ const tabs = new DocTabs({
       drawFrames();
       lines.follow();
       pages.follow();
+      syncTracking();
+      if (!review.open && (editor.comments().length || editor.changes().length)) review.set(true); else review.schedule();
       requestAnimationFrame(() => { ui.scroll.scrollTop = tab.scroll ?? 0; });
       if (grammarOn) scheduleGrammar(200);
       await remember(tab.path);
@@ -457,6 +464,16 @@ function renderToolbar() {
       group(lb("library_books", "Bibliography", "The bibliography file (.bib) and citation style", chooseBibliography), lb("toc", "Contents", "A table of contents at the start (PDF and Word)", () => setSettings({ toc: settings.toc ? null : true }), (s) => s.settings.toc === true)),
     ],
     Review: () => [
+      group(lb("track_changes", "Track changes", "Record insertions and deletions as changes to accept or reject (saved with the document)", () => void setTracking(!isTracking()), () => isTracking()),
+        menu("visibility", DISPLAYS.find(([v]) => v === display)[1], "What the page shows", () => DISPLAYS.map(([v, label, hint]) => ({ label: `${label} — ${hint}`, icon: choice(display)(v), run: () => setDisplay(v) })))),
+      group(tb("keyboard_arrow_up", "Previous change", () => gotoChange(-1)), tb("keyboard_arrow_down", "Next change", () => gotoChange(1)),
+        menu("check", "Accept", "Accept changes", () => [{ label: "Accept this change", icon: "check", run: () => resolveAt(true) }, { label: "Accept all changes", icon: "done_all", run: () => resolveAll(true) }]),
+        menu("close", "Reject", "Reject changes", () => [{ label: "Reject this change", icon: "close", run: () => resolveAt(false) }, { label: "Reject all changes", icon: "remove_done", run: () => resolveAll(false) }])),
+      group(lb("add_comment", "Comment", "Comment on the selected text (Ctrl+Alt+M)", () => void newComment()), lb("comment", "Comments", "The comments and changes beside the page", () => { review.set(!review.open); updateRibbon(); }, () => review.open)),
+      group(menu("picture_as_pdf", (settings["writer-options"]?.review === "markup") ? "PDF: markup" : "PDF: final", "How tracked changes and comments appear in the PDF and web page (Word keeps them as its own)", () => [
+        { label: "Final text (every change accepted, no comments)", icon: choice(settings["writer-options"]?.review === "markup" ? "markup" : "final")("final"), run: () => setSettings({ "writer-options.review": null }) },
+        { label: "Markup (changes in colour, comments as notes)", icon: choice(settings["writer-options"]?.review === "markup" ? "markup" : "final")("markup"), run: () => setSettings({ "writer-options.review": "markup" }) },
+      ])),
       group(lb("spellcheck", "Spelling & grammar", "Check spelling and grammar as you type (LanguageTool)", toggleGrammar, () => grammarOn),
         menu("public", (LANGUAGES.find(([v]) => v === grammarLanguage) ?? ["", grammarLanguage])[1], "Language for spelling and grammar", () => LANGUAGES.map(([v, label]) => ({ label, icon: choice(grammarLanguage)(v), run: () => setLanguage(v) })))),
       group(lb("rate_review", "Review with agent", "Review the selected text (Ctrl+Alt+R)", () => void reviewSelection()), lb("close", "Clear reviews", "Remove the agent's review marks (Esc)", () => { editor.clearReviews(); hideCard(); drawFrames(); })),
@@ -494,6 +511,7 @@ function setSettings(changes) {
   renderToolbar();
   pages.refresh();
   lines.schedule();
+  syncTracking();
 }
 
 /** The layout as the ribbon shows it: { paper, landscape, margin, columns }. */
@@ -602,6 +620,95 @@ function setLanguage(language) {
 
 const find = createFind({ mount: ui.body, getEditor: () => editor, onReplace: () => scheduleGrammar() });
 const lines = createLineNumbers({ page: ui.page, getRoot: () => doc.root, getZoom: () => zoom });
+// Review ----------------------------------------------------------------------
+//
+// Track changes is a document setting (writer-options.track-changes), so it holds for everyone who
+// edits the file here; the author's name is this user's, asked once. Changes and comments are kept
+// in Pandoc's form, which the Word export turns into Word's own.
+
+const DISPLAYS = [["markup", "Markup", "changes in colour"], ["final", "Final", "as if every change were accepted"], ["original", "Original", "as before the changes"]];
+const isTracking = () => Boolean(editor?.tracking.on);
+
+async function ensureAuthor() {
+  if (author) return author;
+  const name = await ask({ title: "Your name", message: "Shown on your tracked changes and comments", value: "", placeholder: "e.g. Alex Smith", ok: "Save" });
+  if (!name) return "";
+  author = name;
+  await browser.storage.local.set({ "writer.author": author }).catch(() => {});
+  return author;
+}
+
+/** Follow the document's setting (on opening it, and after its header changes). */
+function syncTracking() {
+  if (!editor) return;
+  const on = editor.settings()["writer-options"]?.["track-changes"] === true;
+  if (on !== isTracking() || editor.tracking.author !== author) editor.setTracking(on, author || "Unknown");
+  ui.trackState.hidden = !on;
+  updateRibbon();
+}
+
+async function setTracking(on) {
+  if (!editor || doc.status === "readonly") return;
+  if (on && !(await ensureAuthor())) return;
+  setSettings({ "writer-options.track-changes": on ? true : null });
+  syncTracking();
+  toast(on ? "Track changes is on: your edits are recorded" : "Track changes is off");
+}
+
+function setDisplay(mode) {
+  display = mode;
+  ui.page.classList.toggle("show-final", mode === "final");
+  ui.page.classList.toggle("show-original", mode === "original");
+  void browser.storage.local.set({ "writer.display": mode }).catch(() => {});
+  renderToolbar();
+  lines.schedule();
+  pages.schedule();
+}
+
+function gotoChange(step) {
+  const changes = editor?.changes() ?? [];
+  if (!changes.length) { toast("No tracked changes"); return; }
+  const { from, to } = editor.view.state.selection;
+  const target = step > 0 ? changes.find((c) => c.from > (from === to ? from : to - 1)) ?? changes[0] : [...changes].reverse().find((c) => c.to < (from === to ? from : from + 1)) ?? changes.at(-1);
+  editor.selectRange(target.from, target.to);
+  editor.view.domAtPos(target.from).node?.parentElement?.scrollIntoView({ block: "center" });
+  editor.focus();
+}
+
+function resolveAt(accept) {
+  const { from, to } = editor.view.state.selection;
+  const done = editor.resolveChanges(accept, { from, to });
+  if (!done) toast("Put the cursor in a change, or select some");
+  review.schedule();
+}
+
+function resolveAll(accept) {
+  const done = editor.resolveChanges(accept);
+  toast(done ? `${accept ? "Accepted" : "Rejected"} ${done} change${done === 1 ? "" : "s"}` : "No tracked changes");
+  review.schedule();
+}
+
+async function newComment() {
+  if (!editor || doc.status === "readonly") return;
+  const { from, to, empty } = editor.view.state.selection;
+  if (empty) { toast("Select the text to comment on"); return; }
+  if (!(await ensureAuthor())) return;
+  const text = await ask({ title: "Comment", value: "", placeholder: "Your comment", ok: "Comment" });
+  if (!text) return;
+  editor.addComment(from, to, text, author);
+  review.set(true);
+  updateRibbon();
+}
+
+/** Run an agent's edit: with track changes on, it is recorded under the agent's name, not the user's. */
+async function asAgent(fn, who = "Claude") {
+  if (!isTracking()) return fn();
+  editor.setTracking(true, who);
+  try { return await fn(); } finally { editor.setTracking(true, author || "Unknown"); }
+}
+
+const review = createReviewPanel({ mount: ui.body, getEditor: () => editor, getDocName: () => nameOf(doc.path ?? ""), onChange: () => { review.schedule(); scheduleRibbon(); }, authorHue });
+
 const pages = createPageView({ page: ui.page, getRoot: () => doc.root, getZoom: () => zoom, getLayout: () => (editor ? layoutOf(editor.settings()) : {}), paperSize, onDraw: () => updateWhere() });
 
 // Insertions ------------------------------------------------------------------
@@ -1023,17 +1130,24 @@ ui.editorRoot.addEventListener("mouseout", (event) => {
 ui.editorRoot.addEventListener("contextmenu", (event) => {
   if (!editor || !doc.path || doc.status === "readonly") return;
   const { selection } = editor.where();
-  if (!selection) return;
+  const { from, to } = editor.view.state.selection;
+  const inChange = editor.changes().some((c) => c.to >= from && c.from <= to);
+  if (!selection && !inChange) return;
   contextMenu(event, [
-    { label: "Review with agent", icon: "rate_review", run: () => void reviewSelection() },
-    { label: "Discuss in chat", icon: "forum", run: discussSelection },
-    "-",
-    { label: "Copy", icon: "content_copy", run: () => navigator.clipboard.writeText(selection) },
-    { label: "Cut", icon: "content_cut", run: async () => { await navigator.clipboard.writeText(selection); editor.view.dispatch(editor.view.state.tr.deleteSelection()); } },
+    ...(inChange ? [{ label: "Accept change", icon: "check", run: () => resolveAt(true) }, { label: "Reject change", icon: "close", run: () => resolveAt(false) }, ...(selection ? ["-"] : [])] : []),
+    ...(selection ? [
+      { label: "Comment…", icon: "add_comment", run: () => void newComment() },
+      { label: "Review with agent", icon: "rate_review", run: () => void reviewSelection() },
+      { label: "Discuss in chat", icon: "forum", run: discussSelection },
+      "-",
+      { label: "Copy", icon: "content_copy", run: () => navigator.clipboard.writeText(selection) },
+      { label: "Cut", icon: "content_cut", run: async () => { await navigator.clipboard.writeText(selection); editor.view.dispatch(editor.view.state.tr.deleteSelection()); } },
+    ] : []),
   ]);
 });
 addEventListener("keydown", (event) => {
   if (accel(event) && event.altKey && event.code === "KeyR") { event.preventDefault(); void reviewSelection(); return; }
+  if (accel(event) && event.altKey && event.code === "KeyM") { event.preventDefault(); void newComment(); return; }
   if (event.key !== "Escape" || !editor) return;
   if (document.querySelector(".dialog-backdrop, .menu")) return;
   if (!editor.reviews().regions.length) return;
@@ -1179,6 +1293,9 @@ registerPage("writer", {
     grammarLanguage,
     lineNumbers: lines.on,
     pageView: pages.on,
+    trackChanges: isTracking(),
+    changes: editor?.changes().length,
+    comments: editor?.comments().length,
     zoom,
     settings: editor?.settings(),
   } : { path: null },
@@ -1197,7 +1314,7 @@ registerPage("writer", {
       let where = at;
       if (at !== "cursor" && at !== "end") { where = blockAfterHeading(at); if (where === null) throw new Error(`No heading “${at}”`); }
       const wasClean = !doc.dirty;
-      const count = editor.insertMarkdown(markdown, where);
+      const count = await asAgent(() => editor.insertMarkdown(markdown, where));
       // The agent's edit is saved when the document had no unsaved changes of the user's; otherwise it
       // joins them, unsaved, for the user to save (or not).
       const saved = wasClean ? (await save()).saved : false;
@@ -1207,7 +1324,7 @@ registerPage("writer", {
       if (!doc.path || doc.status === "readonly") throw new Error("No editable document is open");
       if (!editor.where().selection) throw new Error("Nothing is selected");
       const wasClean = !doc.dirty;
-      editor.replaceSelection(markdown);
+      await asAgent(() => editor.replaceSelection(markdown));
       const saved = wasClean ? (await save()).saved : false;
       return { replaced: true, saved };
     },
@@ -1266,11 +1383,45 @@ registerPage("writer", {
     "find-replace": async ({ find: query, replace, matchCase = false, wholeWord = false, regex = false }) => {
       if (!editor || doc.status === "readonly") throw new Error("No editable document is open");
       const wasClean = !doc.dirty;
-      const result = find.replaceEverywhere(String(query ?? ""), String(replace ?? ""), { matchCase, wholeWord, regex });
+      const result = await asAgent(() => find.replaceEverywhere(String(query ?? ""), String(replace ?? ""), { matchCase, wholeWord, regex }));
       const saved = wasClean && result.replaced ? (await save()).saved : false;
       return { ...result, saved };
     },
     export: ({ to = "pdf" }) => exportAs(String(to)),
+    /** Propose replacing `text` (within one paragraph) with `replacement`, as a tracked change. */
+    suggest: async ({ text, replacement = "", author: who = "Claude" }) => {
+      if (!editor || doc.status === "readonly") throw new Error("No editable document is open");
+      const range = editor.findText(String(text ?? ""));
+      if (!range) throw new Error("Text not found (it must lie within one paragraph, as writer_read shows it)");
+      const wasClean = !doc.dirty;
+      editor.suggest(range[0], range[1], String(replacement), String(who));
+      review.set(true);
+      const saved = wasClean ? (await save()).saved : false;
+      return { suggested: true, saved };
+    },
+    comment: async ({ text, comment, author: who = "Claude" }) => {
+      if (!editor || doc.status === "readonly") throw new Error("No editable document is open");
+      const range = editor.findText(String(text ?? ""));
+      if (!range) throw new Error("Text not found (it must lie within one paragraph, as writer_read shows it)");
+      const wasClean = !doc.dirty;
+      const id = editor.addComment(range[0], range[1], String(comment), String(who));
+      review.set(true);
+      const saved = wasClean ? (await save()).saved : false;
+      return { id, saved };
+    },
+    /** The tracked changes and comments; with `action`, accept or reject them (only when the user asks). */
+    changes: async ({ action, text }) => {
+      if (!editor || !doc.path) throw new Error("No document is open");
+      let done = 0;
+      if (action === "accept" || action === "reject") {
+        const range = text ? editor.findText(String(text)) : null;
+        if (text && !range) throw new Error("Text not found");
+        const wasClean = !doc.dirty;
+        done = editor.resolveChanges(action === "accept", range ? { from: range[0], to: range[1] } : {});
+        if (wasClean && done) await save();
+      }
+      return { ...(action ? { [action === "accept" ? "accepted" : "rejected"]: done } : {}), tracking: isTracking(), changes: editor.changes().map(({ from, to, ...c }) => c), comments: editor.comments().map(({ from, to, ...c }) => c) };
+    },
     /** Read or change the document settings (layout, line numbers in the export, contents…). */
     settings: async ({ set }) => {
       if (!editor || !doc.path) throw new Error("No document is open");
@@ -1297,7 +1448,11 @@ registerPage("writer", {
 
 $("#doc-icon").append(icon("writer"));
 {
-  const prefs = await browser.storage.local.get(["writer.ribbon", "writer.zoom", "writer.lineNumbers", "writer.language", "writer.pageView"]).catch(() => ({}));
+  const prefs = await browser.storage.local.get(["writer.ribbon", "writer.zoom", "writer.lineNumbers", "writer.language", "writer.pageView", "writer.author", "writer.display"]).catch(() => ({}));
+  author = prefs["writer.author"] ?? "";
+  if (DISPLAYS.some(([v]) => v === prefs["writer.display"])) display = prefs["writer.display"];
+  ui.page.classList.toggle("show-final", display === "final");
+  ui.page.classList.toggle("show-original", display === "original");
   if (RIBBON_TABS.includes(prefs["writer.ribbon"])) ribbonTab = prefs["writer.ribbon"];
   if (prefs["writer.language"]) grammarLanguage = prefs["writer.language"];
   ui.language.textContent = (LANGUAGES.find(([v]) => v === grammarLanguage) ?? ["", grammarLanguage])[1];
@@ -1305,6 +1460,7 @@ $("#doc-icon").append(icon("writer"));
   lines.set(Boolean(prefs["writer.lineNumbers"]));
   pages.set(Boolean(prefs["writer.pageView"]));
 }
+ui.trackState.addEventListener("click", () => void setTracking(false));
 ui.zoom.addEventListener("click", (event) => contextMenu(event, ZOOMS.map((z) => ({ label: `${Math.round(z * 100)}%`, icon: Math.abs(z - zoom) < 0.001 ? "check" : null, run: () => setZoom(z) }))));
 ui.language.addEventListener("click", (event) => contextMenu(event, LANGUAGES.map(([v, label]) => ({ label, icon: v === grammarLanguage ? "check" : null, run: () => setLanguage(v) }))));
 // The tabs of the last session come back (with their unsaved changes); before tabs, the last document.

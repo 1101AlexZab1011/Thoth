@@ -136,14 +136,51 @@ function scripts(children) {
   return out;
 }
 
+const plain = (nodes) => nodes.map((n) => n.value ?? (n.children ? plain(n.children) : "")).join("");
+
+/**
+ * Comments, the way Pandoc reads them from Word: [the comment]{.comment-start id="3" author="A"
+ * date="…"} the commented text []{.comment-end id="3"}. A start and its end among the same
+ * siblings become one pandocComment node around the commented text, carrying the comment as
+ * plain text; an end elsewhere (across paragraphs or formatting) leaves both as they are.
+ */
+function comments(children) {
+  let out = children.map((n) => (n.children && n.type !== "pandocSpan" ? { ...n, children: comments(n.children) } : n));
+  for (let i = 0; i < out.length; i++) {
+    const start = out[i];
+    if (start.type !== "pandocSpan" || start.kind !== "comment-start") continue;
+    const idOf = (span) => { const parsed = parseAttrs(span.attrs); return parsed?.attributes.id ?? parsed?.id ?? ""; };
+    const { attributes = {} } = parseAttrs(start.attrs) ?? {};
+    const commentId = idOf(start);
+    const end = out.findIndex((n, k) => k > i && n.type === "pandocSpan" && n.kind === "comment-end" && idOf(n) === commentId);
+    if (end < 0 || end === i + 1) continue; // nothing commented: keep the source as it is
+    const node = {
+      type: "pandocComment",
+      id: String(commentId),
+      author: attributes.author ?? "",
+      date: attributes.date ?? "",
+      text: plain(start.children),
+      children: out.slice(i + 1, end),
+    };
+    out = [...out.slice(0, i), node, ...out.slice(end + 1)];
+  }
+  return out;
+}
+
 /**
  * Pandoc inline syntax in a block's inline children (mdast), returned as new children.
  * `source` is the block's own Markdown; with an escaped [ ] ^ or ~ in it, nothing changes.
  */
 export function pandocInlines(children, source = "") {
   if (ESCAPED.test(source)) return children;
-  return scripts(bracketSpans(children));
+  return comments(scripts(bracketSpans(children)));
 }
+
+/**
+ * A comment's text as the inside of […]. Brackets become parentheses: escaped ones would make the
+ * paragraph unreadable as spans here (see ESCAPED), and a comment is prose, not markup.
+ */
+const commentText = (text) => String(text).replace(/\[/g, "(").replace(/\]/g, ")").replace(/\s*\n\s*/g, " ");
 
 // ------------------------------------------------------------- writing --
 
@@ -164,6 +201,11 @@ function wrapped(open, close, { escapeSpaces = false } = {}) {
 /** remark-stringify handlers for the nodes pandocInlines makes. */
 export const pandocHandlers = {
   pandocSpan: (node, parent, state, info) => wrapped("[", `]${node.attrs ?? "{}"}`)(node, parent, state, info),
+  pandocComment: (node, parent, state, info) => {
+    const start = formatAttrs({ classes: ["comment-start"], attributes: { id: node.id, author: node.author, date: node.date } });
+    const end = formatAttrs({ classes: ["comment-end"], attributes: { id: node.id } });
+    return wrapped(`[${commentText(node.text)}]${start}`, `[]${end}`)(node, parent, state, info);
+  },
   superscript: wrapped("^", "^", { escapeSpaces: true }),
   subscript: wrapped("~", "~", { escapeSpaces: true }),
 };

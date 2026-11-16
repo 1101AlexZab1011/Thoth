@@ -30,6 +30,17 @@ test("render metadata: line numbers and a Word template only when needed", async
   assert.deepEqual(await renderMetadata({ papersize: "a4", "reference-doc": "mine.docx" }, "docx", make), {});
 });
 
+test("render metadata: tracked changes become final text or markup, except in Word", async () => {
+  const make = { lineNumbersTex: async () => "/c/lineno.tex", markupTex: async () => "/c/markup.tex", reviewFilter: async () => "/c/review.lua", referenceDocx: async () => "/c/ref.docx" };
+  assert.deepEqual(await renderMetadata({}, "pdf", make, { hasReview: true }), { filters: ["/c/review.lua"], "writer-review": "final" });
+  assert.deepEqual(await renderMetadata({ "writer-options": { review: "markup" }, filters: ["mine.lua"] }, "pdf", make, { hasReview: true }), {
+    filters: ["mine.lua", "/c/review.lua"], "writer-review": "markup", "include-in-header": [{ file: "/c/markup.tex" }],
+  });
+  assert.deepEqual(await renderMetadata({ "writer-options": { review: "markup" } }, "html", make, { hasReview: true }), { filters: ["/c/review.lua"], "writer-review": "markup" });
+  assert.deepEqual(await renderMetadata({ "writer-options": { review: "markup" } }, "docx", make, { hasReview: true }), {});
+  assert.deepEqual(await renderMetadata({}, "pdf", make, { hasReview: false }), {});
+});
+
 test("the Word template gets the page setup, line numbers and type", () => {
   const docx = writeZip([
     { name: "word/document.xml", data: Buffer.from("<w:body><w:p/><w:sectPr><w:footnotePr><w:numRestart w:val=\"eachSect\" /></w:footnotePr></w:sectPr></w:body>") },
