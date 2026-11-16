@@ -183,10 +183,21 @@ content when asked.
   - cross-references `@fig-x`, `@eq-x`, `@sec-x`;
   - display math `$$ … $$ {#eq-x}`;
   - figures `![Caption](figures/file.png){#fig-x}`;
-  - callouts `::: {.callout-note}` … `:::`.
+  - callouts `::: {.callout-note}` … `:::`;
+  - underline `[text]{.underline}`, highlight `[text]{.mark}`, small caps
+    `[text]{.smallcaps}`, superscript `^2^`, subscript `~2~` (no spaces
+    inside, or escape them: `^a\ b^`);
+  - a page break `{{< pagebreak >}}` in a paragraph of its own.
   Put each sentence on its own line inside a paragraph, so diffs stay readable.
+- **The ribbon is yours too.** `writer_format` applies bold, underline,
+  headings, lists… to a passage. `writer_find_replace` replaces across the
+  document. `writer_settings` reads and sets the layout: paper, margins,
+  columns, font, size, line spacing, contents, bibliography, and line
+  numbers in the export (`writer-options.line-numbers`). `writer_view`
+  shows line numbers in the margin or zooms.
 - `writer_render` builds the PDF and shows it in the viewer. On failure it
-  returns the errors: fix them and render again.
+  returns the errors: fix them and render again. `writer_export` writes a
+  Word file (`docx`) or a web page next to the document.
 - **Agent review.** The user can select a passage and choose "Review with agent".
   Its comments appear in the Writer. "Discuss in chat" sends you the passage
   and the comment. Answer as a demanding but fair reviewer would. Change the text only when

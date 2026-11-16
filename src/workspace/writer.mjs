@@ -1,12 +1,15 @@
 // Host side of the Writer space: rendering Quarto documents, reading their
 // bibliographies, and grammar checking through a local LanguageTool server.
 import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, delimiter, dirname, extname, isAbsolute, join, resolve } from "node:path";
 import { appDirs, isMac, isWindows, killTree, program, spawnProgram } from "../platform.mjs";
 import { FsError } from "./writes.mjs";
+import { readZip, writeZip } from "./zip.mjs";
+import YAML from "yaml";
 
 const QUARTO = program("quarto", "QUARTO");
 // The supervisor review runs Claude Code headless: no tools, no MCP servers, a
@@ -105,16 +108,21 @@ export class Writer {
 
   // ---------------------------------------------------------------- render --
 
-  /** Render a document with Quarto (one render per file at a time) and return the result. */
+  /**
+   * Render a document with Quarto (one render per file at a time) and return the result. The Writer's
+   * own settings in the header (`writer-options:`, see renderMetadata) reach Quarto through a metadata file,
+   * so the document stays as the author wrote it.
+   */
   async render(full, { to = "pdf" } = {}) {
     if (!WRITABLE_DOCUMENTS.has(extname(full).toLowerCase())) throw new FsError(400, "bad_request", "Only .qmd and Markdown documents render");
     if (!/^[a-z0-9+-]+$/i.test(String(to))) throw new FsError(400, "bad_request", "Unknown output format");
     await stat(full).catch(() => { throw new FsError(404, "not_found", `${full} does not exist`); });
     const current = this.renders.get(full);
     if (current?.running) return current.promise;
+    const extra = await this.#renderArgs(full, to);
     const entry = { running: true, started: new Date().toISOString(), log: "" };
     entry.promise = new Promise((resolveRender) => {
-      const child = spawnProgram(QUARTO, ["render", basename(full), "--to", to], { cwd: dirname(full), env: { ...process.env, QUARTO_PRINT_STACK: "false" } });
+      const child = spawnProgram(QUARTO, ["render", basename(full), "--to", to, ...extra], { cwd: dirname(full), env: { ...process.env, QUARTO_PRINT_STACK: "false" } });
       const take = (chunk) => { entry.log += chunk.toString(); if (entry.log.length > 400_000) entry.log = entry.log.slice(-300_000); };
       child.stdout.on("data", take);
       child.stderr.on("data", take);
@@ -139,6 +147,30 @@ export class Writer {
     });
     this.renders.set(full, entry);
     return entry.promise;
+  }
+
+  /** ["--metadata-file", file] carrying what the document's settings need for `to`, or []. */
+  async #renderArgs(full, to) {
+    const settings = documentSettings(await readFile(full, "utf8"));
+    const dir = join(this.cacheDir ?? join(homedir(), ".cache", "mail-workspace"), "render");
+    await mkdir(dir, { recursive: true });
+    const meta = await renderMetadata(settings, to, {
+      lineNumbersTex: async () => { const file = join(dir, "lineno.tex"); await writeFile(file, LINENO_TEX); return file; },
+      referenceDocx: (options) => this.referenceDocx(dir, options),
+    });
+    if (!Object.keys(meta).length) return [];
+    const file = join(dir, `${createHash("sha1").update(full).digest("hex").slice(0, 16)}.yml`);
+    await writeFile(file, YAML.stringify(meta));
+    return ["--metadata-file", file];
+  }
+
+  /** A Word template with the given page setup and fonts (cached by its options). */
+  async referenceDocx(dir, options) {
+    const file = join(dir, `reference-${createHash("sha1").update(JSON.stringify(options)).digest("hex").slice(0, 16)}.docx`);
+    if (existsSync(file)) return file;
+    this.defaultReference ??= runCapture(QUARTO, ["pandoc", "--print-default-data-file", "reference.docx"]);
+    await writeFile(file, patchReferenceDocx(await this.defaultReference, options));
+    return file;
   }
 
   renderStatus(full) {
@@ -263,6 +295,105 @@ export class Writer {
   }
 
   close() { this.languagetool?.kill(); }
+}
+
+// ------------------------------------------------------- render settings --
+
+const LINENO_TEX = "\\usepackage{lineno}\n\\linenumbers\n";
+
+/** A document's YAML header as an object ({} without one, or when it does not parse). */
+export function documentSettings(source) {
+  const header = /^---\r?\n([\s\S]*?)\r?\n(?:---|\.\.\.)\s*(?:\r?\n|$)/.exec(source)?.[1];
+  if (!header) return {};
+  try { const value = YAML.parse(header); return value && typeof value === "object" && !Array.isArray(value) ? value : {}; } catch { return {}; }
+}
+
+/**
+ * The page and type settings of a document, from Quarto's own keys (which the PDF uses directly):
+ * papersize, geometry, classoption, fontsize, mainfont, linestretch. Lengths in cm, sizes in pt.
+ */
+export function layoutOf(settings) {
+  const options = [].concat(settings.classoption ?? []).map(String);
+  const geometry = [].concat(settings.geometry ?? []).map(String).join(",");
+  const length = (name) => {
+    const m = new RegExp(`(?:^|,)\\s*${name}\\s*=\\s*([\\d.]+)\\s*(cm|mm|in|pt)`).exec(geometry);
+    if (!m) return undefined;
+    return Number(m[1]) * { cm: 1, mm: 0.1, in: 2.54, pt: 2.54 / 72.27 }[m[2]];
+  };
+  const margin = length("margin");
+  const layout = {
+    paper: /letter/i.test(String(settings.papersize ?? "")) ? "letter" : settings.papersize ? "a4" : undefined,
+    landscape: options.includes("landscape") || /(?:^|,)\s*landscape\s*(?:,|$)/.test(geometry) || undefined,
+    columns: options.includes("twocolumn") ? 2 : undefined,
+    margins: ["top", "right", "bottom", "left"].some((side) => length(side) !== undefined) || margin !== undefined
+      ? Object.fromEntries(["top", "right", "bottom", "left"].map((side) => [side, length(side) ?? margin ?? 2.5])) : undefined,
+    font: typeof settings.mainfont === "string" ? settings.mainfont : undefined,
+    fontSize: /^\s*([\d.]+)\s*pt\s*$/.exec(String(settings.fontsize ?? ""))?.[1] ? Number(/^\s*([\d.]+)/.exec(String(settings.fontsize))[1]) : undefined,
+    lineSpacing: Number.isFinite(Number(settings.linestretch)) && settings.linestretch !== undefined ? Number(settings.linestretch) : undefined,
+  };
+  return Object.fromEntries(Object.entries(layout).filter(([, v]) => v !== undefined));
+}
+
+/**
+ * What a render needs beyond the document's own header, as Quarto metadata:
+ *   writer-options.line-numbers   lineno for PDF, line numbering in the Word template
+ *                                 (not `writer:`, which is Quarto's own: the Pandoc writer to use)
+ *   the layout keys       a Word template with the same page and type (PDF reads them itself)
+ * `make` builds the files: lineNumbersTex() and referenceDocx(options) resolve to paths.
+ */
+export async function renderMetadata(settings, to, make) {
+  const writer = settings["writer-options"] && typeof settings["writer-options"] === "object" ? settings["writer-options"] : {};
+  const lineNumbers = writer["line-numbers"] === true;
+  const meta = {};
+  if ((to === "pdf" || to === "latex" || to === "beamer") && lineNumbers) {
+    meta["include-in-header"] = [...[].concat(settings["include-in-header"] ?? []), { file: await make.lineNumbersTex() }];
+  }
+  const ownReference = settings["reference-doc"] ?? settings.format?.docx?.["reference-doc"];
+  const layout = layoutOf(settings);
+  if (to === "docx" && !ownReference && (lineNumbers || Object.keys(layout).length)) {
+    meta["reference-doc"] = await make.referenceDocx({ lineNumbers, ...layout });
+  }
+  return meta;
+}
+
+const TWIPS_PER_CM = 566.93;
+const PAPER = { a4: [11906, 16838], letter: [12240, 15840] };
+const xmlAttr = (value) => String(value).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+
+/** Pandoc's Word template with a page setup (section) and default type of our own. */
+export function patchReferenceDocx(buffer, { lineNumbers = false, paper, landscape, margins, columns, font, fontSize, lineSpacing } = {}) {
+  const entries = readZip(buffer);
+  const patch = (name, fn) => { const e = entries.find((x) => x.name === name); if (e) e.data = Buffer.from(fn(e.data.toString("utf8")), "utf8"); };
+  patch("word/document.xml", (xml) => {
+    const [w, h] = PAPER[paper] ?? PAPER.a4;
+    const parts = ['<w:footnotePr><w:numRestart w:val="eachSect" /></w:footnotePr>'];
+    if (paper || landscape) parts.push(landscape ? `<w:pgSz w:w="${h}" w:h="${w}" w:orient="landscape" />` : `<w:pgSz w:w="${w}" w:h="${h}" />`);
+    if (margins) parts.push(`<w:pgMar w:top="${Math.round(margins.top * TWIPS_PER_CM)}" w:right="${Math.round(margins.right * TWIPS_PER_CM)}" w:bottom="${Math.round(margins.bottom * TWIPS_PER_CM)}" w:left="${Math.round(margins.left * TWIPS_PER_CM)}" w:header="708" w:footer="708" w:gutter="0" />`);
+    if (lineNumbers) parts.push('<w:lnNumType w:countBy="1" w:restart="continuous" />');
+    if (columns > 1) parts.push(`<w:cols w:num="${columns}" w:space="708" />`);
+    return xml.replace(/<w:sectPr>[\s\S]*?<\/w:sectPr>/, `<w:sectPr>${parts.join("")}</w:sectPr>`);
+  });
+  patch("word/styles.xml", (xml) => {
+    let out = xml;
+    if (font) out = out.replace(/<w:rFonts [^>]*\/>/, `<w:rFonts w:ascii="${xmlAttr(font)}" w:hAnsi="${xmlAttr(font)}" w:cs="${xmlAttr(font)}" w:eastAsiaTheme="minorEastAsia" />`);
+    if (fontSize) out = out.replace(/<w:sz w:val="\d+" \/>\s*<w:szCs w:val="\d+" \/>/, `<w:sz w:val="${Math.round(fontSize * 2)}" /><w:szCs w:val="${Math.round(fontSize * 2)}" />`);
+    if (lineSpacing) out = out.replace(/(<w:pPrDefault>\s*<w:pPr>\s*)<w:spacing ([^>]*?)\s*\/>/, `$1<w:spacing $2 w:line="${Math.round(240 * lineSpacing)}" w:lineRule="auto" />`);
+    return out;
+  });
+  return writeZip(entries);
+}
+
+/** Run a command and resolve to its standard output (a Buffer). */
+function runCapture(command, args) {
+  return new Promise((resolveRun, reject) => {
+    const child = spawnProgram(command, args, { env: process.env });
+    const chunks = [];
+    let stderr = "";
+    child.stdout.on("data", (chunk) => chunks.push(chunk));
+    child.stderr.on("data", (chunk) => { stderr += chunk; });
+    child.on("error", (error) => reject(new FsError(503, "render_unavailable", `Could not start Quarto (${error.message})`)));
+    child.on("close", (code) => (code === 0 ? resolveRun(Buffer.concat(chunks)) : reject(new FsError(502, "render_failed", stderr.trim().slice(-400) || `Quarto exited with ${code}`))));
+  });
 }
 
 // ------------------------------------------------------------- helpers --

@@ -11,11 +11,38 @@ body { display: flex; flex-direction: column; background: var(--mw-bg); }
 .chip.saved { background: var(--mw-success-soft); color: var(--mw-success); }
 .chip.unsaved { background: var(--mw-surface-3); color: var(--mw-text-2); }
 
-/* --- formatting toolbar ---------------------------------------------------- */
+/* --- ribbon ------------------------------------------------------------------ */
 .toolbar {
-  flex: none; padding: 5px 10px;
+  flex: none; padding: 0 10px 5px;
   background: var(--mw-surface); border-bottom: 1px solid var(--mw-border);
 }
+.rb-tabs { display: flex; gap: 2px; margin: 0 -2px 5px; border-bottom: 1px solid var(--mw-border); }
+.rb-tab {
+  height: 30px; padding: 0 12px; border: 0; border-bottom: 2px solid transparent; margin-bottom: -1px; background: none;
+  color: var(--mw-text-2); font: 560 12.5px var(--mw-font); cursor: pointer;
+}
+.rb-tab:hover { color: var(--mw-text); background: var(--mw-hover); border-radius: var(--mw-radius-s) var(--mw-radius-s) 0 0; }
+.rb-tab.active { color: var(--mw-primary); border-bottom-color: var(--mw-primary); }
+.toolbar .rb-btn {
+  display: inline-flex; align-items: center; gap: 5px; height: 30px; padding: 0 8px; border: 0; border-radius: var(--mw-radius-s);
+  background: none; color: var(--mw-text-2); font: 12.5px var(--mw-font); white-space: nowrap; cursor: pointer;
+}
+.toolbar .rb-btn:hover { background: var(--mw-hover); color: var(--mw-text); }
+.toolbar .rb-btn[aria-pressed="true"], .toolbar .rb-style[aria-pressed="true"] { background: var(--mw-primary-soft); color: var(--mw-primary-soft-text); }
+.toolbar .rb-menu { padding-right: 4px; }
+.toolbar .rb-menu > span { max-width: 140px; overflow: hidden; text-overflow: ellipsis; }
+/* The style gallery: each button shows its style. */
+.toolbar .rb-style {
+  height: 30px; min-width: 64px; padding: 0 9px; border: 1px solid var(--mw-border); border-radius: var(--mw-radius-s);
+  background: var(--mw-bg); color: var(--mw-text); font: 13px "Source Serif 4", "Noto Serif", Georgia, serif; cursor: pointer; white-space: nowrap;
+}
+.toolbar .rb-style:hover { border-color: var(--mw-border-strong); }
+.toolbar .rb-style-h1 { font: 700 15px var(--mw-font); }
+.toolbar .rb-style-h2 { font: 680 14px var(--mw-font); }
+.toolbar .rb-style-h3 { font: 680 13px var(--mw-font); }
+.toolbar .rb-style-h4 { font: 650 12.5px var(--mw-font); }
+.toolbar .rb-style-quote { font-style: italic; color: var(--mw-text-2); }
+.toolbar .rb-style-code_block { font: 12px var(--mw-font-mono); }
 /* The bar wraps between groups when the editor is narrow. Each group draws its divider on its left, one
    pixel outside; the clip hides it on whichever group starts a row. */
 .toolbar .tb-rows { display: flex; flex-wrap: wrap; align-items: center; row-gap: 2px; overflow: hidden; }
@@ -32,7 +59,7 @@ body { display: flex; flex-direction: column; background: var(--mw-bg); }
 .conflict.danger { background: var(--mw-danger-soft); color: var(--mw-danger); }
 
 /* --- body ------------------------------------------------------------------- */
-.body { flex: 1; min-height: 0; display: flex; }
+.body { flex: 1; min-height: 0; display: flex; position: relative; }
 .outline {
   width: 240px; flex: none; overflow: auto; padding: 14px 8px; border-right: 1px solid var(--mw-border); background: var(--mw-surface);
 }
@@ -86,6 +113,25 @@ body { display: flex; flex-direction: column; background: var(--mw-bg); }
   background: var(--mw-surface); border-top: 1px solid var(--mw-border); color: var(--mw-text-2); font-size: 12px;
 }
 .statusbar .spacer { flex: 1; }
+.statusbar .sb-btn { height: 22px; padding: 0 8px; border: 0; border-radius: var(--mw-radius-s); background: none; color: var(--mw-text-2); font: 12px var(--mw-font); cursor: pointer; }
+.statusbar .sb-btn:hover { background: var(--mw-hover); color: var(--mw-text); }
+
+/* --- find and replace (writer-find.js) ---------------------------------------- */
+.fd-bar {
+  position: absolute; top: 10px; right: 24px; z-index: 5; display: grid; gap: 6px; padding: 6px 8px;
+  background: var(--mw-surface); border: 1px solid var(--mw-border); border-radius: var(--mw-radius); box-shadow: var(--mw-shadow-2);
+}
+.fd-row { display: flex; align-items: center; gap: 4px; }
+.fd-input { width: 230px; height: 28px; }
+.fd-replace { padding-left: 32px; }
+.fd-replace .fd-input { width: 230px; }
+.fd-count { min-width: 74px; font-size: 12px; color: var(--mw-text-3); text-align: center; }
+.fd-bar.invalid .fd-count { color: var(--mw-danger); }
+.fd-bar .icon-btn[aria-pressed="true"] { background: var(--mw-primary-soft); color: var(--mw-primary-soft-text); }
+
+/* --- line numbers (writer-lines.js) --------------------------------------------- */
+.ln-layer { position: absolute; inset: 0; pointer-events: none; z-index: 1; }
+.ln { position: absolute; left: 0; width: 52px; padding-right: 2px; text-align: right; font: 11px var(--mw-font-mono); color: var(--mw-text-3); user-select: none; }
 .conflict .btn.small { height: 28px; padding: 0 12px; font-size: 12.5px; }
 
 /* --- agent review (the frames; the marks and cards are in shared/editor.css) */

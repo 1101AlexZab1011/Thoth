@@ -20,6 +20,7 @@ import { toggleMark } from "@milkdown/kit/prose/commands";
 import { EditorState, Plugin, PluginKey, TextSelection } from "@milkdown/kit/prose/state";
 import { Decoration, DecorationSet } from "@milkdown/kit/prose/view";
 import remarkMath from "remark-math";
+import YAML from "yaml";
 import { assemble, gapsOf, inlineTokens, splitQuarto } from "./quarto.mjs";
 import { pandocInlines, pandocHandlers } from "./pandoc.mjs";
 import { notesTokens } from "../notes/vault.mjs";
@@ -308,6 +309,12 @@ function inlineView(hooks) {
         hooks.describeLink?.(link, dom);
         return;
       }
+      if (kind === "shortcode" && /^\{\{<\s*pagebreak\s*>\}\}$/.test(source.trim())) {
+        dom.className = "qi qi-pagebreak";
+        dom.replaceChildren(Object.assign(document.createElement("span"), { textContent: "Page break" }));
+        dom.title = "A page break in the PDF and Word file · click to edit";
+        return;
+      }
       if (kind === "cite") dom.textContent = source.replace(/^\[|\]$/g, "");
       else dom.textContent = source;
       dom.title = kind === "cite" ? "Citation · click to edit" : kind === "crossref" ? "Cross-reference · click to edit" : "Click to edit";
@@ -359,6 +366,27 @@ const grammarPlugin = $prose(() => new Plugin({
   },
   props: { decorations: (state) => grammarKey.getState(state) },
 }));
+
+// ---------------------------------------------------------- find marks --
+
+const findKey = new PluginKey("writer-find");
+const findPlugin = $prose(() => new Plugin({
+  key: findKey,
+  state: {
+    init: () => DecorationSet.empty,
+    apply: (tr, set) => tr.getMeta(findKey) ?? set.map(tr.mapping, tr.doc),
+  },
+  props: { decorations: (state) => findKey.getState(state) },
+}));
+
+const escapeRegExp = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/** The RegExp for a search, or { error } for a broken regular expression. */
+export function searchPattern(query, { matchCase = false, wholeWord = false, regex = false } = {}) {
+  let source = regex ? query : escapeRegExp(query);
+  if (wholeWord) source = `(?<![\\p{L}\\p{N}_])(?:${source})(?![\\p{L}\\p{N}_])`;
+  try { return new RegExp(source, `g${matchCase ? "" : "i"}u`); } catch (error) { return { error: error.message }; }
+}
 
 // ------------------------------------------------- supervisor review --
 //
@@ -474,6 +502,7 @@ export async function createWriter(root, hooks = {}, options = {}) {
     .use($view(quartoInline, () => inlineView(hooks)))
     .use($view(imageSchema.node, () => imageView(hooks)))
     .use(grammarPlugin)
+    .use(findPlugin)
     .use(reviewPlugin)
     .use(notesLayer.plugins.flat())
     .create();
@@ -727,6 +756,98 @@ export async function createWriter(root, hooks = {}, options = {}) {
     },
     replaceRange(from, to, text) {
       view.dispatch(view.state.tr.insertText(text, from, to));
+    },
+
+    // --- find and replace ----------------------------------------------------
+
+    /**
+     * Occurrences of `query` in the text, as the reader sees it (citations as their source):
+     * [{ from, to, text, atom }]. `atom` marks a match that covers a chip or other non-text node,
+     * which replacing would remove whole. A broken regular expression gives { error }.
+     */
+    findAll(query, options = {}) {
+      if (!query) return [];
+      const pattern = searchPattern(query, options);
+      if (pattern.error) return pattern;
+      const { doc } = view.state;
+      const out = [];
+      doc.descendants((node, pos) => {
+        if (!node.isTextblock) return true;
+        const { text, starts, ends } = rangeText(doc, pos, pos + node.nodeSize);
+        for (const m of text.matchAll(pattern)) {
+          if (!m[0]) continue;
+          const from = starts[m.index];
+          const to = ends[m.index + m[0].length - 1];
+          let atom = false;
+          doc.nodesBetween(from, to, (n) => { if (n.isInline && !n.isText) atom = true; });
+          out.push({ from, to, text: m[0], groups: [...m], atom });
+        }
+        return false;
+      });
+      return out;
+    },
+
+    /** Highlight matches; `current` (an index) is drawn stronger and, with `scroll`, scrolled to. */
+    showFind(matches = [], current = -1, { scroll = true } = {}) {
+      const decorations = matches.map((m, k) => Decoration.inline(m.from, m.to, { class: k === current ? "wr-find wr-find-current" : "wr-find" }));
+      view.dispatch(view.state.tr.setMeta(findKey, DecorationSet.create(view.state.doc, decorations)).setMeta("addToHistory", false));
+      const match = scroll ? matches[current] : null;
+      if (match) {
+        const dom = view.domAtPos(match.from);
+        const el = dom.node.nodeType === 1 ? dom.node : dom.node.parentElement;
+        el?.scrollIntoView({ block: "center" });
+      }
+    },
+
+    /** Replace matches (from findAll); `replacement` may use $1… with a regular expression. Returns the count. */
+    replaceMatches(matches, replacement, { regex = false } = {}) {
+      const tr = view.state.tr;
+      let count = 0;
+      for (const m of [...matches].sort((a, b) => b.from - a.from)) {
+        if (m.atom) continue;
+        const text = regex ? replacement.replace(/\$(\d+)|\$&/g, (all, n) => (n === undefined ? m.groups[0] : m.groups[Number(n)] ?? "")) : replacement;
+        if (text) tr.insertText(text, m.from, m.to); else tr.delete(m.from, m.to);
+        count++;
+      }
+      if (count) view.dispatch(tr.scrollIntoView());
+      return count;
+    },
+
+    // --- document settings (the YAML header) ----------------------------------
+
+    /** The header as an object ({} without one). */
+    settings() {
+      const first = view.state.doc.firstChild;
+      if (first?.type.name !== "quarto_block" || first.attrs.kind !== "frontmatter") return {};
+      try { return YAML.parse(first.attrs.source.replace(/^---\s*\n|\n(---|\.\.\.)\s*$/g, "")) ?? {}; } catch { return {}; }
+    },
+
+    /**
+     * Change header keys: { key: value } or { "a.b": value } for nested keys; null/undefined
+     * removes one. Comments and the order of other keys are kept. Returns false if the header does not parse.
+     */
+    setSettings(changes) {
+      const first = view.state.doc.firstChild;
+      const has = first?.type.name === "quarto_block" && first.attrs.kind === "frontmatter";
+      const body = has ? first.attrs.source.replace(/^---\s*\n/, "").replace(/\n?(---|\.\.\.)\s*$/, "") : "";
+      const yaml = YAML.parseDocument(body);
+      if (yaml.errors.length) return false;
+      if (!yaml.contents || !YAML.isMap(yaml.contents)) yaml.contents = yaml.createNode({});
+      for (const [key, value] of Object.entries(changes)) {
+        const path = key.split(".");
+        if (value === null || value === undefined) {
+          yaml.deleteIn(path);
+          const parent = path.length > 1 ? yaml.getIn(path.slice(0, -1)) : null;
+          if (parent && YAML.isMap(parent) && !parent.items.length) yaml.deleteIn(path.slice(0, -1));
+        } else yaml.setIn(path, value);
+      }
+      const text = yaml.contents.items.length ? `---\n${yaml.toString({ lineWidth: 0 }).replace(/\n$/, "")}\n---` : "";
+      const tr = view.state.tr;
+      if (has && text) tr.setNodeMarkup(0, undefined, { ...first.attrs, source: text });
+      else if (has) tr.delete(0, first.nodeSize);
+      else if (text) tr.insert(0, schema.nodes.quarto_block.create({ kind: "frontmatter", label: "", source: text }));
+      view.dispatch(tr);
+      return true;
     },
 
     // --- supervisor review ---------------------------------------------------

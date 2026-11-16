@@ -37,6 +37,12 @@ export const NAMES = [
   "format_bold", "format_italic", "format_strikethrough", "format_list_bulleted", "format_quote", "format_h1", "format_h2", "format_h3",
   "format_paragraph", "functions", "tag", "toc", "spellcheck", "save", "sync", "data_object", "menu_book", "lightbulb", "superscript",
   "dictionary", "check_small", "rate_review", "priority_high",
+  // writer ribbon
+  "format_underlined", "subscript", "format_clear", "format_indent_increase", "format_indent_decrease", "find_replace", "match_case",
+  "match_word", "regular_expression", "insert_page_break", "format_line_spacing", "view_column", "margin", "crop_portrait",
+  "crop_landscape", "text_fields", "format_size", "special_character", "track_changes", "add_comment", "comment", "done_all",
+  "remove_done", "notes", "format_h4", "text_format", "pageview", "fit_page_width", "file_export", "html", "library_books",
+  "format_list_numbered_rtl", "straighten",
   // slides
   "upload", "slideshow",
   // draw

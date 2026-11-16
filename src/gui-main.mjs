@@ -336,6 +336,34 @@ register("writer_reveal","Scroll the Writer to a heading or to the first block c
 
 register("writer_render", "Render the open document to PDF with Quarto and show it in the viewer. Returns errors and the end of the log if it fails.", {}, async () => text(await gui("page", { page: "writer", type: "render" }, { timeoutMs: 660_000 })));
 
+register("writer_export", "Export the open document with Quarto, next to it: docx (Word; tracked changes and comments become Word's own), html or pdf. The result is shown in the viewer. The document's Layout settings (paper, margins, font, line numbers) apply.", {
+  to: z.enum(["docx", "html", "pdf"]).default("docx"),
+}, async ({ to }) => text(await gui("page", { page: "writer", type: "export", to }, { timeoutMs: 660_000 })));
+
+register("writer_format", "Apply a ribbon command to `text` (an exact passage within one paragraph, selected first) or to the user's current selection: bold, italic, underline, strike, superscript, subscript, highlight, smallcaps, code, clear (character formatting); paragraph, heading (value 1–6), quote, bullet, ordered, indent, outdent (the block). Saves when the document had no unsaved changes.", {
+  command: z.enum(["bold", "italic", "underline", "strike", "superscript", "subscript", "highlight", "smallcaps", "code", "clear", "paragraph", "heading", "quote", "bullet", "ordered", "indent", "outdent"]),
+  text: z.string().optional(),
+  value: z.number().int().min(1).max(6).optional().describe("heading level"),
+}, async ({ command, text: passage, value }) => text(await gui("page", { page: "writer", type: "format", command, text: passage, value })));
+
+register("writer_find_replace", "Replace every occurrence of `find` in the open document (as the reader sees the text). Matches inside citations or other chips are counted but left alone. Saves when the document had no unsaved changes.", {
+  find: z.string(),
+  replace: z.string(),
+  matchCase: z.boolean().optional(),
+  wholeWord: z.boolean().optional(),
+  regex: z.boolean().optional().describe("`find` is a regular expression; `replace` may use $1…"),
+}, async (args) => text(await gui("page", { page: "writer", type: "find-replace", ...args })));
+
+register("writer_settings", "Read, or change with `set`, the open document's settings (its YAML header). Layout keys the PDF and Word export both follow: papersize (a4|letter), geometry (e.g. [\"margin=2.5cm\", \"landscape\"]), classoption ([\"twocolumn\"]), mainfont, fontsize (\"11pt\"), linestretch (1.5), toc, bibliography, csl. The Writer's own: \"writer-options.line-numbers\" (line numbers in PDF and Word). A null value removes a key; dotted keys are nested.", {
+  set: z.record(z.string(), z.any()).optional(),
+}, async ({ set }) => text(await gui("page", { page: "writer", type: "settings", set })));
+
+register("writer_view", "The Writer's view for the user: line numbers in the margin, zoom (0.5–2), the navigation outline.", {
+  lineNumbers: z.boolean().optional(),
+  zoom: z.number().min(0.5).max(2).optional(),
+  outline: z.boolean().optional(),
+}, async (args) => text(await gui("page", { page: "writer", type: "view", ...args })));
+
 // ------------------------------------------------------------- slides --
 // Slides edits presentations (.slides.json, PPTist's model; media in media/ next to the deck).
 // The open deck is edited through the page, so each change is one undo step for the user; other

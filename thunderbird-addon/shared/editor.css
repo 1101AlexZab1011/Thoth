@@ -28,6 +28,13 @@
 .wr-doc th { background: var(--mw-surface-2); }
 .wr-doc .wr-image { max-width: 100%; border-radius: var(--mw-radius-s); display: inline-block; vertical-align: middle; }
 .wr-doc .wr-image.missing { min-width: 160px; min-height: 60px; background: var(--mw-surface-2); outline: 1px dashed var(--mw-border-strong); }
+.wr-doc u { text-decoration: underline; text-underline-offset: 2px; }
+.wr-doc mark { background: #fff59d; color: inherit; border-radius: 2px; padding: 0 1px; }
+.wr-doc .wr-smallcaps { font-variant: small-caps; letter-spacing: 0.02em; }
+.wr-doc .wr-span { border-bottom: 1px dotted var(--mw-border-strong); }
+.wr-doc sup, .wr-doc sub { font-size: 0.72em; line-height: 0; }
+.wr-doc .wr-find { background: rgba(255, 196, 0, 0.35); border-radius: 2px; }
+.wr-doc .wr-find-current { background: rgba(255, 140, 0, 0.65); outline: 1px solid rgb(230, 120, 0); }
 .wr-doc .ProseMirror-selectednode { outline: 2px solid var(--mw-primary); outline-offset: 2px; border-radius: 4px; }
 
 /* Kept Quarto blocks */
@@ -65,6 +72,11 @@
 .qi-cite.unknown { background: var(--mw-danger-soft); color: var(--mw-danger); }
 .qi-attr, .qi-shortcode, .qi-raw, .qi-span { font: 0.78em var(--mw-font-mono); color: var(--mw-text-3); background: var(--mw-surface-2); padding: 0 4px; }
 .qi-math { padding: 0 1px; }
+.qi-pagebreak {
+  display: block; margin: 6px 0; border-top: 1px dashed var(--mw-border-strong); text-align: center; line-height: 0.1;
+  font: 600 10.5px var(--mw-font); letter-spacing: 0.06em; text-transform: uppercase; color: var(--mw-text-3);
+}
+.qi-pagebreak span { background: var(--mw-surface); padding: 0 8px; }
 .qi:hover { filter: brightness(0.96); outline: 1px solid var(--mw-border-strong); }
 
 /* Grammar */
