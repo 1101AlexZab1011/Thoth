@@ -11,36 +11,41 @@ import katex from "katex";
 import { Editor, rootCtx, editorViewCtx, parserCtx, serializerCtx, schemaCtx, remarkCtx, commandsCtx, editorViewOptionsCtx, remarkStringifyOptionsCtx } from "@milkdown/kit/core";
 import { commonmark, imageSchema } from "@milkdown/kit/preset/commonmark";
 import * as cm from "@milkdown/kit/preset/commonmark";
-import { gfm, insertTableCommand, toggleStrikethroughCommand } from "@milkdown/kit/preset/gfm";
+import { gfm, insertTableCommand, toggleStrikethroughCommand, remarkGFMPlugin } from "@milkdown/kit/preset/gfm";
 import { history, undoCommand, redoCommand } from "@milkdown/kit/plugin/history";
 import { clipboard } from "@milkdown/kit/plugin/clipboard";
 import { listener, listenerCtx } from "@milkdown/kit/plugin/listener";
-import { $node, $remark, $view, $prose } from "@milkdown/kit/utils";
+import { $node, $mark, $remark, $view, $prose } from "@milkdown/kit/utils";
+import { toggleMark } from "@milkdown/kit/prose/commands";
 import { EditorState, Plugin, PluginKey, TextSelection } from "@milkdown/kit/prose/state";
 import { Decoration, DecorationSet } from "@milkdown/kit/prose/view";
 import remarkMath from "remark-math";
 import { assemble, gapsOf, inlineTokens, splitQuarto } from "./quarto.mjs";
+import { pandocInlines, pandocHandlers } from "./pandoc.mjs";
 import { notesTokens } from "../notes/vault.mjs";
 import { notesPlugins, notesApi } from "../notes/editor-notes.mjs";
 
 // ------------------------------------------------------ remark: safety net --
 
 const BLOCK_TYPES = new Set(["paragraph", "heading", "thematicBreak", "blockquote", "list", "listItem", "code", "table", "tableRow", "tableCell", "footnoteDefinition", "quartoBlock"]);
-const INLINE_TYPES = new Set(["text", "emphasis", "strong", "inlineCode", "link", "image", "break", "html", "delete", "footnoteReference", "inlineMath", "quartoInline"]);
+const INLINE_TYPES = new Set(["text", "emphasis", "strong", "inlineCode", "link", "image", "break", "html", "delete", "footnoteReference", "inlineMath", "quartoInline", "pandocSpan", "superscript", "subscript"]);
 const BLOCK_PARENTS = new Set(["root", "blockquote", "listItem", "footnoteDefinition"]);
+const CONTAINERS = new Set(["list", "table", "tableRow"]);
 
 /**
  * Runs after parsing: anything Milkdown has no node for becomes a kept node
  * with its exact source, display math becomes a kept block, and Quarto inline
  * syntax inside text becomes chips (Notes: [[links]]). Nothing the parser does not model is lost.
  */
-function quartoRemark(tokenize = inlineTokens) {
+function quartoRemark(tokenize = inlineTokens, { pandoc = true } = {}) {
   return (tree, file) => {
     const source = String(file?.value ?? "");
     const slice = (node) => (node.position ? source.slice(node.position.start.offset, node.position.end.offset) : "");
     const walk = (node) => {
       if (!node.children) return;
       const blockParent = BLOCK_PARENTS.has(node.type);
+      // Spans, ^super^ and ~sub~ become formatting (src/writer/pandoc.mjs); the Notes dialect has none.
+      if (pandoc && !blockParent && !CONTAINERS.has(node.type)) node.children = pandocInlines(node.children, slice(node));
       const out = [];
       for (const child of node.children) {
         // Pandoc inline notes ^[…] have no Markdown equivalent: such a paragraph is
@@ -113,6 +118,50 @@ const quartoInline = $node("quarto_inline", () => ({
     runner: (state, node) => state.addNode("html", undefined, node.attrs.source),
   },
 }));
+
+// ------------------------------------------------------------ the marks --
+//
+// Formatting Markdown has no syntax for is written the Pandoc way (src/writer/pandoc.mjs):
+// [text]{.underline}, [text]{.mark}, [text]{.smallcaps}, ^sup^, ~sub~. A span with other
+// attributes stays a span and keeps its attribute text.
+
+function spanMark(name, kind, { tag, cls, attrs: initial }) {
+  return $mark(name, () => ({
+    attrs: { attrs: { default: initial } },
+    parseDOM: [{ tag: cls ? `${tag}.${cls}` : tag, getAttrs: (dom) => ({ attrs: dom.dataset.attrs || initial }) }],
+    toDOM: (mark) => [tag, { ...(cls ? { class: cls } : {}), "data-attrs": mark.attrs.attrs, ...(kind === "span" ? { title: mark.attrs.attrs } : {}) }, 0],
+    parseMarkdown: {
+      match: (node) => node.type === "pandocSpan" && node.kind === kind,
+      runner: (state, node, type) => { state.openMark(type, { attrs: node.attrs }); state.next(node.children); state.closeMark(type); },
+    },
+    toMarkdown: {
+      match: (mark) => mark.type.name === name,
+      runner: (state, mark) => { state.withMark(mark, "pandocSpan", undefined, { attrs: mark.attrs.attrs }); },
+    },
+  }));
+}
+
+function scriptMark(name, tag) {
+  return $mark(name, () => ({
+    excludes: "superscript subscript",
+    parseDOM: [{ tag }],
+    toDOM: () => [tag, 0],
+    parseMarkdown: {
+      match: (node) => node.type === name,
+      runner: (state, node, type) => { state.openMark(type); state.next(node.children); state.closeMark(type); },
+    },
+    toMarkdown: { match: (mark) => mark.type.name === name, runner: (state, mark) => { state.withMark(mark, name); } },
+  }));
+}
+
+const formatMarks = [
+  spanMark("underline", "underline", { tag: "u", attrs: "{.underline}" }),
+  spanMark("highlight", "highlight", { tag: "mark", attrs: "{.mark}" }),
+  spanMark("smallcaps", "smallcaps", { tag: "span", cls: "wr-smallcaps", attrs: "{.smallcaps}" }),
+  spanMark("pandoc_span", "span", { tag: "span", cls: "wr-span", attrs: "{}" }),
+  scriptMark("superscript", "sup"),
+  scriptMark("subscript", "sub"),
+];
 
 // ----------------------------------------------------------- node views --
 
@@ -404,7 +453,9 @@ export async function createWriter(root, hooks = {}, options = {}) {
     .config((ctx) => {
       ctx.set(rootCtx, root);
       // Edited blocks are written the way people (and GitHub, Obsidian) write Markdown: - bullets, --- rules.
-      ctx.update(remarkStringifyOptionsCtx, (prev) => ({ ...prev, bullet: "-", rule: "-" }));
+      ctx.update(remarkStringifyOptionsCtx, (prev) => ({ ...prev, bullet: "-", rule: "-", handlers: { ...prev.handlers, ...pandocHandlers } }));
+      // Pandoc reads ~x~ as subscript; only ~~x~~ is strikethrough (in Obsidian too).
+      ctx.set(remarkGFMPlugin.options.key, { singleTilde: false });
       ctx.update(editorViewOptionsCtx, (prev) => ({ ...prev, attributes: { class: notes ? "wr-doc nt-doc" : "wr-doc", spellcheck: "true" } }));
       ctx.get(listenerCtx).updated(() => hooks.onChange?.());
       ctx.get(listenerCtx).selectionUpdated(() => hooks.onSelection?.());
@@ -415,9 +466,10 @@ export async function createWriter(root, hooks = {}, options = {}) {
     .use(clipboard)
     .use(listener)
     .use($remark("remarkMath", () => remarkMath))
-    .use($remark("quartoRemark", () => () => quartoRemark(notes ? notesTokens : inlineTokens)))
+    .use($remark("quartoRemark", () => () => quartoRemark(notes ? notesTokens : inlineTokens, { pandoc: !notes })))
     .use(quartoBlock)
     .use(quartoInline)
+    .use(formatMarks)
     .use($view(quartoBlock, () => blockView(hooks)))
     .use($view(quartoInline, () => inlineView(hooks)))
     .use($view(imageSchema.node, () => imageView(hooks)))
@@ -512,6 +564,15 @@ export async function createWriter(root, hooks = {}, options = {}) {
 
   const run = (key, payload) => editor.action((ctx) => ctx.get(commandsCtx).call(key.key ?? key, payload));
 
+  /** Remove character formatting from the selection; links stay links. */
+  function clearFormatting() {
+    const { from, to, empty } = view.state.selection;
+    const tr = view.state.tr;
+    if (empty) { tr.setStoredMarks([]); view.dispatch(tr); return; }
+    for (const type of Object.values(schema.marks)) if (type.name !== "link") tr.removeMark(from, to, type);
+    view.dispatch(tr);
+  }
+
   const api = {
     editor,
     view,
@@ -605,11 +666,36 @@ export async function createWriter(root, hooks = {}, options = {}) {
         bullet: cm.wrapInBulletListCommand, ordered: cm.wrapInOrderedListCommand, quote: cm.wrapInBlockquoteCommand, hr: cm.insertHrCommand,
         paragraph: cm.turnIntoTextCommand, heading: cm.wrapInHeadingCommand, link: cm.toggleLinkCommand, image: cm.insertImageCommand,
         table: insertTableCommand, undo: undoCommand, redo: redoCommand, codeblock: cm.createCodeBlockCommand,
+        indent: cm.sinkListItemCommand, outdent: cm.liftListItemCommand,
       };
-      const key = map[name];
-      if (!key) throw new Error(`Unknown command ${name}`);
-      run(key, payload);
+      const marks = { underline: "underline", highlight: "highlight", smallcaps: "smallcaps", superscript: "superscript", subscript: "subscript" };
+      if (marks[name]) toggleMark(schema.marks[marks[name]])(view.state, view.dispatch);
+      else if (name === "clear") clearFormatting();
+      else {
+        const key = map[name];
+        if (!key) throw new Error(`Unknown command ${name}`);
+        run(key, payload);
+      }
       view.focus();
+    },
+
+    /** What the selection is formatted with, for the toolbar's pressed buttons: { marks: Set, block }. */
+    formatting() {
+      const { state } = view;
+      const { from, to, empty, $from } = state.selection;
+      const marks = new Set();
+      if (empty) for (const mark of state.storedMarks ?? $from.marks()) marks.add(mark.type.name);
+      else {
+        for (const type of Object.values(schema.marks)) if (state.doc.rangeHasMark(from, to, type)) marks.add(type.name);
+      }
+      const parent = $from.parent;
+      let block = parent.type.name === "heading" ? `h${parent.attrs.level}` : parent.type.name;
+      for (let d = $from.depth; d > 0; d--) {
+        const name = $from.node(d).type.name;
+        if (name === "blockquote") { block = "quote"; break; }
+        if (name === "bullet_list" || name === "ordered_list") { block = name === "bullet_list" ? "bullet" : "ordered"; break; }
+      }
+      return { marks, block };
     },
 
     /** Plain text of the visible textblocks, for grammar checking: { text, map } per block. */
