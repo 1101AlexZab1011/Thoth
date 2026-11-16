@@ -109,6 +109,15 @@ async function createTabEditor(tab) {
 ui.editorRoot.addEventListener("paste", onPasteImages, true);
 ui.editorRoot.addEventListener("drop", onDropImages, true);
 ui.editorRoot.addEventListener("click", onGrammarClick);
+// A footnote's number leads to its text, and the text back to the number.
+ui.editorRoot.addEventListener("click", (event) => {
+  const ref = event.target.closest?.('sup[data-type="footnote_reference"]');
+  const def = event.target.closest?.('dl[data-type="footnote_definition"] > dt');
+  const label = ref?.dataset.label ?? def?.parentElement.dataset.label;
+  if (!label || !doc.root) return;
+  const target = doc.root.querySelector(ref ? `dl[data-type="footnote_definition"][data-label="${CSS.escape(label)}"]` : `sup[data-type="footnote_reference"][data-label="${CSS.escape(label)}"]`);
+  target?.scrollIntoView({ block: "center", behavior: "smooth" });
+});
 
 async function resolveImage(tab, src) {
   if (/^(https?:|data:|blob:)/.test(src)) return src;
@@ -442,7 +451,7 @@ function renderToolbar() {
       group(lb("table", "Table", "Insert a table", run("table")), lb("image", "Figure", "Insert a figure", insertFigure), lb("link", "Link", "Link the selected text", insertLink)),
       group(lb("functions", "Equation", "A numbered display equation", insertEquation), h("button.tb-text", { type: "button", title: "Inline math", onclick: insertInlineMath }, "x²"), lb("special_character", "Symbol", "Insert a symbol", insertSymbol)),
       group(lb("insert_page_break", "Page break", "Start a new page here (PDF and Word)", insertPageBreak), lb("horizontal_rule", "Divider", "A horizontal rule", run("hr"))),
-      group(lb("lightbulb", "Callout", "A note, tip or warning box", insertCallout), lb("data_object", "Code cell", "A Python code cell", insertCodeCell)),
+      group(lb("notes", "Footnote", "A footnote at the cursor", () => void insertFootnote()), lb("lightbulb", "Callout", "A note, tip or warning box", insertCallout), lb("data_object", "Code cell", "A Python code cell", insertCodeCell)),
     ],
     Layout: () => {
       const layout = layoutSettings(settings);
@@ -461,7 +470,7 @@ function renderToolbar() {
     },
     References: () => [
       group(lb("menu_book", "Citation", "Insert a citation", insertCitation), lb("tag", "Cross-reference", "Refer to a figure, table, equation or section", insertCrossref)),
-      group(lb("library_books", "Bibliography", "The bibliography file (.bib) and citation style", chooseBibliography), lb("toc", "Contents", "A table of contents at the start (PDF and Word)", () => setSettings({ toc: settings.toc ? null : true }), (s) => s.settings.toc === true)),
+      group(lb("notes", "Footnote", "A footnote at the cursor", () => void insertFootnote()), lb("library_books", "Bibliography", "The bibliography file (.bib) and citation style", chooseBibliography), lb("toc", "Contents", "A table of contents at the start (PDF and Word)", () => setSettings({ toc: settings.toc ? null : true }), (s) => s.settings.toc === true)),
     ],
     Review: () => [
       group(lb("track_changes", "Track changes", "Record insertions and deletions as changes to accept or reject (saved with the document)", () => void setTracking(!isTracking()), () => isTracking()),
@@ -740,6 +749,11 @@ async function insertCallout() {
 
 function insertCodeCell() {
   editor.insertBlocks([["code", "```{python}\n#| echo: false\n\n```", "{python}"]]);
+}
+
+async function insertFootnote() {
+  const text = await ask({ title: "Footnote", message: "The note's text; its number goes where the cursor is", value: "", ok: "Insert" });
+  if (text) editor.insertFootnote(text);
 }
 
 function insertPageBreak() {

@@ -40,6 +40,13 @@
 .show-final .wr-doc ins.wr-insertion, .show-original .wr-doc del.wr-deletion { text-decoration: none; color: inherit; opacity: 1; }
 .wr-doc .wr-comment { background: rgba(255, 196, 0, 0.22); border-bottom: 2px solid rgba(225, 160, 0, 0.75); }
 .wr-doc .wr-comment.active { background: rgba(255, 170, 0, 0.42); }
+.wr-doc sup[data-type="footnote_reference"] { color: var(--mw-primary); font: 600 0.7em var(--mw-font); cursor: pointer; padding: 0 1px; }
+.wr-doc sup[data-type="footnote_reference"]::before { content: "["; }
+.wr-doc sup[data-type="footnote_reference"]::after { content: "]"; }
+.wr-doc dl[data-type="footnote_definition"] { display: flex; gap: 8px; margin: 0.4em 0; padding-top: 0.4em; border-top: 1px solid var(--mw-border); font-size: 0.88em; }
+.wr-doc dl[data-type="footnote_definition"] dt { color: var(--mw-primary); font: 600 0.85em var(--mw-font); cursor: pointer; min-width: 1.4em; }
+.wr-doc dl[data-type="footnote_definition"] dd { margin: 0; flex: 1; }
+.wr-doc dl[data-type="footnote_definition"] dd > p { margin: 0; }
 .wr-doc .wr-find { background: rgba(255, 196, 0, 0.35); border-radius: 2px; }
 .wr-doc .wr-find-current { background: rgba(255, 140, 0, 0.65); outline: 1px solid rgb(230, 120, 0); }
 .wr-doc .ProseMirror-selectednode { outline: 2px solid var(--mw-primary); outline-offset: 2px; border-radius: 4px; }

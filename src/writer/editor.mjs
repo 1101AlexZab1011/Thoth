@@ -814,6 +814,21 @@ export async function createWriter(root, hooks = {}, options = {}) {
       view.dispatch(tr.scrollIntoView());
     },
 
+    /** A footnote: its number at the cursor, its text at the end of the document ([^n] and [^n]: …). Returns the label. */
+    insertFootnote(text) {
+      const labels = new Set();
+      view.state.doc.descendants((node) => { if (node.type.name === "footnote_reference" || node.type.name === "footnote_definition") labels.add(node.attrs.label); });
+      let n = 1;
+      while (labels.has(String(n))) n++;
+      const label = String(n);
+      const tr = view.state.tr.replaceSelectionWith(schema.nodes.footnote_reference.create({ label }), false);
+      const body = schema.nodes.paragraph.create(null, text ? schema.text(text) : null);
+      tr.insert(tr.doc.content.size, schema.nodes.footnote_definition.create({ label }, body));
+      view.dispatch(tr.scrollIntoView());
+      view.focus();
+      return label;
+    },
+
     insertInline(kind, source) {
       const node = schema.nodes.quarto_inline.create({ kind, source });
       view.dispatch(view.state.tr.replaceSelectionWith(node, false).scrollIntoView());
