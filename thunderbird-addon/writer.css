@@ -411,3 +411,11 @@ body.wp .menu .wp-colors .wp-auto { width: 100%; height: 26px; }
 /* Labels and attributes ({#sec-x}, {width=50%}) are markup, like Word's bookmarks: shown with the
    formatting marks (Home → ¶), hidden otherwise. */
 .page:not(.show-marks) .wr-doc .qi-attr { display: none; }
+
+/* The page scrolls under the bars, never over them: the scroll area clips its painting (the zoomed
+   page could otherwise paint past it when scrolled), and the bars stack above it. */
+.body { overflow: hidden; }
+.workspace { min-height: 0; grid-template-rows: 15px minmax(0, 1fr); grid-template-columns: 14px minmax(0, 1fr); }
+.workspace.no-rulers { grid-template-columns: 0 minmax(0, 1fr); grid-template-rows: 0 minmax(0, 1fr); }
+.scroll { contain: paint; isolation: isolate; z-index: 0; }
+.statusbar, .toolbar, .wp-header, .ruler, .ruler-corner { position: relative; z-index: 5; }

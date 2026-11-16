@@ -1024,7 +1024,7 @@ function gotoFootnote(step) {
 
 // View ------------------------------------------------------------------------
 
-const ZOOMS = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
+const ZOOMS = [0.5, 0.6, 0.7, 0.8, 0.9, 1, 1.1, 1.2, 1.3, 1.5, 1.75, 2, 2.5, 3];
 const stepZoom = (step) => (step > 0 ? ZOOMS.find((z) => z > zoom + 0.001) ?? ZOOMS.at(-1) : ZOOMS.findLast((z) => z < zoom - 0.001) ?? ZOOMS[0]);
 
 function setZoom(value) {
@@ -1954,6 +1954,20 @@ addEventListener("keydown", (event) => {
   action();
   scheduleRibbon();
 }, true);
+// Zoom as in Word: Ctrl with + / - / 0 and Ctrl with the wheel zoom the page, not the whole window.
+addEventListener("keydown", (event) => {
+  if (!accel(event) || event.altKey || ui.page.hidden) return;
+  const step = { "+": 1, "=": 1, "-": -1, _: -1, 0: 0 }[event.key] ?? { NumpadAdd: 1, NumpadSubtract: -1, Numpad0: 0 }[event.code];
+  if (step === undefined) return;
+  event.preventDefault();
+  event.stopPropagation();
+  setZoom(step === 0 ? 1 : stepZoom(step));
+}, true);
+ui.scroll.addEventListener("wheel", (event) => {
+  if (!event.ctrlKey || ui.page.hidden) return;
+  event.preventDefault();
+  setZoom(stepZoom(event.deltaY < 0 ? 1 : -1));
+}, { passive: false });
 // Unsaved changes are kept as drafts (not saved behind the user's back); write them now when the page goes.
 addEventListener("pagehide", () => { for (const tab of tabs.tabs) if (tab.dirty) void tabs.writeDraft(tab); });
 // Coming here straight from the File viewer brings its document along.
