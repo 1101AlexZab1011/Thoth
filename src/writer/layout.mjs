@@ -44,6 +44,9 @@ export function layoutOf(raw) {
     columns: options.includes("twocolumn") ? 2 : undefined,
     margins: ["top", "right", "bottom", "left"].some((side) => length(side) !== undefined) || margin !== undefined
       ? Object.fromEntries(["top", "right", "bottom", "left"].map((side) => [side, length(side) ?? margin ?? 2.5])) : undefined,
+    // Where the running head sits: geometry's headsep and headheight (LaTeX: 25pt and 12pt).
+    headSep: length("headsep"),
+    headHeight: length("headheight"),
     font: typeof settings.mainfont === "string" ? settings.mainfont : undefined,
     fontSize: /^\s*([\d.]+)\s*pt\s*$/.exec(String(settings.fontsize ?? ""))?.[1] ? Number(/^\s*([\d.]+)/.exec(String(settings.fontsize))[1]) : undefined,
     lineSpacing: Number.isFinite(Number(settings.linestretch)) && settings.linestretch !== undefined ? Number(settings.linestretch) : undefined,

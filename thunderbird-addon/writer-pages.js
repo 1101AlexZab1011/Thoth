@@ -44,7 +44,7 @@ function textLines(dom, base, zoom, natural, shift) {
   return lines.map((line) => ({ ...line, top: natural(line.clientTop) + shift, bottom: natural(line.clientBottom) + shift }));
 }
 
-export function createPageView({ page, getEditor, getZoom, getLayout, paperSize, onDraw }) {
+export function createPageView({ page, getEditor, getZoom, getLayout, getRunningHead = () => "", paperSize, onDraw }) {
   const sheets = h("div.pv-sheets", { "aria-hidden": "true" });
   page.prepend(sheets);
   let queued = false;
@@ -64,11 +64,12 @@ export function createPageView({ page, getEditor, getZoom, getLayout, paperSize,
       width: width * PX_PER_CM, height: height * PX_PER_CM,
       top: m.top * PX_PER_CM, right: m.right * PX_PER_CM, bottom: m.bottom * PX_PER_CM, left: m.left * PX_PER_CM,
       columns: layout.columns ?? 1, fontSize: (layout.fontSize ?? DEFAULT_SIZE) * PX_PER_PT,
+      headSep: (layout.headSep ?? 25 * 2.54 / 72.27) * PX_PER_CM, headHeight: (layout.headHeight ?? 12 * 2.54 / 72.27) * PX_PER_CM,
     };
     const vars = {
       "--pv-width": `${geometry.width}px`, "--pv-height": `${geometry.height}px`,
       "--pv-top": `${geometry.top}px`, "--pv-right": `${geometry.right}px`, "--pv-bottom": `${geometry.bottom}px`, "--pv-left": `${geometry.left}px`,
-      "--pv-font": font, "--pv-heading-font": layout.serifHeadings ? font : SANS, "--pv-size": `${geometry.fontSize}px`,
+      "--pv-font": font, "--pv-sans": SANS, "--pv-heading-font": layout.serifHeadings ? font : SANS, "--pv-size": `${geometry.fontSize}px`,
       // Single spacing is about 1.15 × the size for these fonts (Word's "single"); LaTeX's is 1.2.
       "--pv-base": "1.2", "--pv-leading": String(1.2 * spacing),
     };
@@ -155,8 +156,14 @@ export function createPageView({ page, getEditor, getZoom, getLayout, paperSize,
     const count = p + 1;
     starts = Array.from({ length: count }, (_, k) => k * pitch);
     page.style.minHeight = `${count * pitch - SHEET_GAP}px`;
-    if (sheets.childElementCount !== count || sheets.firstElementChild?.style.height !== `${g.height}px`) {
-      sheets.replaceChildren(...starts.map((y) => h("div.pv-sheet", { style: { top: `${y}px`, height: `${g.height}px` } })));
+    // The running head (the header's `running-head`) in each sheet's top margin, as the PDF prints it.
+    const head = String(getRunningHead() ?? "").trim();
+    const signature = `${count}|${g.height}|${head}|${g.top}|${g.headSep}|${g.headHeight}|${g.left}`;
+    if (sheets.dataset.signature !== signature) {
+      sheets.dataset.signature = signature;
+      const headTop = Math.max(8, g.top - g.headSep - g.headHeight);
+      sheets.replaceChildren(...starts.map((y) => h("div.pv-sheet", { style: { top: `${y}px`, height: `${g.height}px` } },
+        head ? h("div.pv-head", { style: { top: `${headTop}px`, left: `${g.left}px`, right: `${g.right}px`, height: `${g.headHeight}px` } }, head) : null)));
     }
     const same = gaps.length === old.size && gaps.every((gap) => Math.abs((old.get(gap.pos) ?? -99) - gap.height) < 1);
     if (same) passes = 0;

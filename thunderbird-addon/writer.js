@@ -1254,7 +1254,7 @@ function renderRightPanel() {
 
 // ---------------------------------------------------------- the rulers --
 
-const pages = createPageView({ page: ui.page, getEditor: () => editor, getZoom: () => zoom, getLayout: () => (editor ? layoutOf(editor.settings()) : {}), paperSize, onDraw: () => { updateWhere(); rulers.schedule(); lines.schedule(); } });
+const pages = createPageView({ page: ui.page, getEditor: () => editor, getZoom: () => zoom, getLayout: () => (editor ? layoutOf(editor.settings()) : {}), getRunningHead: () => (editor ? editor.settings()["running-head"] ?? "" : ""), paperSize, onDraw: () => { updateWhere(); rulers.schedule(); lines.schedule(); } });
 const lines = createLineNumbers({ page: ui.page, getRoot: () => doc.root, getZoom: () => zoom, getLeft: () => pages.geometry.left, getPitch: () => pages.pitch });
 
 /** The sheet the vertical ruler follows: the cursor's, when it is in view; else the one in the middle of the view. */
