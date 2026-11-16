@@ -31,18 +31,30 @@ body { display: flex; flex-direction: column; background: var(--mw-bg); }
 .toolbar .rb-btn[aria-pressed="true"], .toolbar .rb-style[aria-pressed="true"] { background: var(--mw-primary-soft); color: var(--mw-primary-soft-text); }
 .toolbar .rb-menu { padding-right: 4px; }
 .toolbar .rb-menu > span { max-width: 140px; overflow: hidden; text-overflow: ellipsis; }
-/* The style gallery: each button shows its style. */
-.toolbar .rb-style {
-  height: 30px; min-width: 64px; padding: 0 9px; border: 1px solid var(--mw-border); border-radius: var(--mw-radius-s);
-  background: var(--mw-bg); color: var(--mw-text); font: 13px "Source Serif 4", "Noto Serif", Georgia, serif; cursor: pointer; white-space: nowrap;
+/* The paragraph style box and its list, each style drawn as it looks. */
+.toolbar .rb-style-select {
+  display: inline-flex; align-items: center; justify-content: space-between; gap: 6px; width: 150px; height: 30px; padding: 0 6px 0 10px;
+  border: 1px solid var(--mw-border); border-radius: var(--mw-radius-s); background: var(--mw-bg); color: var(--mw-text); cursor: pointer;
 }
-.toolbar .rb-style:hover { border-color: var(--mw-border-strong); }
-.toolbar .rb-style-h1 { font: 700 15px var(--mw-font); }
-.toolbar .rb-style-h2 { font: 680 14px var(--mw-font); }
-.toolbar .rb-style-h3 { font: 680 13px var(--mw-font); }
-.toolbar .rb-style-h4 { font: 650 12.5px var(--mw-font); }
-.toolbar .rb-style-quote { font-style: italic; color: var(--mw-text-2); }
-.toolbar .rb-style-code_block { font: 12px var(--mw-font-mono); }
+.toolbar .rb-style-select:hover { border-color: var(--mw-border-strong); }
+.rb-style-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rb-style-menu { min-width: 200px; padding: 4px; }
+.rb-style-menu .rb-style-item {
+  display: block; width: 100%; padding: 6px 12px; border: 0; border-radius: var(--mw-radius-s); background: none; color: var(--mw-text);
+  text-align: left; cursor: pointer; white-space: nowrap;
+}
+.rb-style-menu .rb-style-item:hover, .rb-style-menu .rb-style-item:focus-visible { background: var(--mw-hover); outline: none; }
+.rb-style-menu .rb-style-item.active { background: var(--mw-primary-soft); color: var(--mw-primary-soft-text); }
+:is(.rb-style-menu, .toolbar) .rb-style-paragraph { font: 14px "Source Serif 4", "Noto Serif", Georgia, serif; }
+:is(.rb-style-menu, .toolbar) .rb-style-h1 { font: 700 19px var(--mw-font); }
+:is(.rb-style-menu, .toolbar) .rb-style-h2 { font: 680 17px var(--mw-font); }
+:is(.rb-style-menu, .toolbar) .rb-style-h3 { font: 680 15px var(--mw-font); }
+:is(.rb-style-menu, .toolbar) .rb-style-h4 { font: 650 14px var(--mw-font); }
+:is(.rb-style-menu, .toolbar) .rb-style-quote { font: italic 14px "Source Serif 4", "Noto Serif", Georgia, serif; color: var(--mw-text-2); }
+:is(.rb-style-menu, .toolbar) .rb-style-code_block { font: 13px var(--mw-font-mono); }
+/* In the box itself the label keeps the toolbar's height (and beats the rules above). */
+.toolbar .rb-style-select .rb-style-label { font-size: min(1em, 14px); line-height: 1; }
+.toolbar .rb-style-select .rb-style-label.rb-style-h1, .toolbar .rb-style-select .rb-style-label.rb-style-h2 { font-size: 14px; }
 /* The bar wraps between groups when the editor is narrow. Each group draws its divider on its left, one
    pixel outside; the clip hides it on whichever group starts a row. */
 .toolbar .tb-rows { display: flex; flex-wrap: wrap; align-items: center; row-gap: 2px; overflow: hidden; }

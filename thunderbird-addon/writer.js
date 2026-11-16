@@ -392,6 +392,7 @@ const SPACINGS = [[1, "1.0"], [1.15, "1.15"], [1.5, "1.5"], [2, "2.0"]];
 const LANGUAGES = [["en-US", "English (US)"], ["en-GB", "English (UK)"], ["de-DE", "German"], ["fr", "French"], ["es", "Spanish"], ["ru-RU", "Russian"], ["uk-UA", "Ukrainian"]];
 
 let ribbonState = [];
+let ribbonUpdaters = []; // (state) => void, for controls that show more than pressed or not
 let ribbonQueued = false;
 
 function scheduleRibbon() {
@@ -405,10 +406,49 @@ function updateRibbon() {
   if (!editor || !doc.path) return;
   const state = { ...editor.formatting(), settings: editor.settings() };
   for (const [button, holds] of ribbonState) button.setAttribute("aria-pressed", String(Boolean(holds(state))));
+  for (const update of ribbonUpdaters) update(state);
+}
+
+/** The style of the block the cursor is in, as the style box names it. */
+const BLOCK_NAMES = { bullet: "Bulleted list", ordered: "Numbered list", h5: "Heading 5", h6: "Heading 6" };
+const styleName = (block) => STYLES.find(([b]) => b === block)?.[1] ?? BLOCK_NAMES[block] ?? "Normal";
+
+/** The paragraph style box, as in Word and ONLYOFFICE: the current style, and a list drawn in each style. */
+function styleSelect() {
+  const label = h("span.rb-style-label", {}, "Normal");
+  const button = h("button.rb-style-select", { type: "button", title: "Paragraph style", "aria-haspopup": "menu", onclick: () => openStyleMenu(button) }, label, icon("keyboard_arrow_down", { size: 16 }));
+  ribbonUpdaters.push((state) => {
+    label.textContent = styleName(state.block);
+    label.className = `rb-style-label rb-style-${STYLES.some(([b]) => b === state.block) ? state.block : "paragraph"}`;
+  });
+  return button;
+}
+
+function openStyleMenu(anchor) {
+  document.querySelector(".menu")?.remove();
+  if (!editor) return;
+  const current = editor.formatting().block;
+  const close = () => { menu.remove(); removeEventListener("pointerdown", outside, true); removeEventListener("keydown", keys, true); };
+  const pickStyle = ([, , , [command, payload]]) => { close(); try { editor.command(command, payload); } catch (error) { toast(error.message); } scheduleRibbon(); };
+  const items = STYLES.map((style) => h(`button.rb-style-item.rb-style-${style[0]}${style[0] === current ? ".active" : ""}`, { type: "button", role: "menuitem", title: style[2], onclick: () => pickStyle(style) }, style[1]));
+  const menu = h("div.menu.rb-style-menu", { role: "menu" }, ...items);
+  document.body.append(menu);
+  const rect = anchor.getBoundingClientRect();
+  menu.style.left = `${Math.min(rect.left, innerWidth - menu.offsetWidth - 8)}px`;
+  menu.style.top = `${rect.bottom + 4}px`;
+  const outside = (event) => { if (!menu.contains(event.target) && !anchor.contains(event.target)) close(); };
+  const keys = (event) => {
+    const at = items.indexOf(document.activeElement);
+    if (event.key === "Escape") { event.preventDefault(); close(); anchor.focus(); }
+    else if (event.key === "ArrowDown" || event.key === "ArrowUp") { event.preventDefault(); items[(at + (event.key === "ArrowDown" ? 1 : -1) + items.length) % items.length].focus(); }
+  };
+  setTimeout(() => { addEventListener("pointerdown", outside, true); addEventListener("keydown", keys, true); });
+  (items.find((b) => b.classList.contains("active")) ?? items[0]).focus();
 }
 
 function renderToolbar() {
   ribbonState = [];
+  ribbonUpdaters = [];
   const run = (name, payload) => () => { try { editor.command(name, payload); scheduleRibbon(); } catch (error) { toast(error.message); } };
   const track = (button, holds) => { if (holds) { button.setAttribute("aria-pressed", "false"); ribbonState.push([button, holds]); } return button; };
   // An icon button, a button with a label, a button that opens a menu of choices.
@@ -428,7 +468,7 @@ function renderToolbar() {
     ],
     Home: () => [
       group(tb("undo", "Undo (Ctrl+Z)", run("undo")), tb("redo", "Redo (Ctrl+Shift+Z)", run("redo"))),
-      group(...STYLES.map(([block, label, title, [command, payload]]) => track(h(`button.rb-style.rb-style-${block}`, { type: "button", title, onclick: run(command, payload) }, label), (s) => s.block === block))),
+      group(styleSelect()),
       group(
         tb("format_bold", "Bold (Ctrl+B)", run("bold"), mark("strong")),
         tb("format_italic", "Italic (Ctrl+I)", run("italic"), mark("emphasis")),
