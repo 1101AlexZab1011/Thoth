@@ -1401,7 +1401,8 @@ registerPage("writer", {
       const saved = wasClean && result.replaced ? (await save()).saved : false;
       return { ...result, saved };
     },
-    export: ({ to = "pdf" }) => exportAs(String(to)),
+    // `format`, not `to`: a message's `to` names the page it goes to.
+    export: ({ format = "pdf" }) => exportAs(String(format)),
     /** Propose replacing `text` (within one paragraph) with `replacement`, as a tracked change. */
     suggest: async ({ text, replacement = "", author: who = "Claude" }) => {
       if (!editor || doc.status === "readonly") throw new Error("No editable document is open");
@@ -1444,6 +1445,9 @@ registerPage("writer", {
         const wasClean = !doc.dirty;
         if (!editor.setSettings(set)) throw new Error("The document's YAML header does not parse");
         renderToolbar();
+        pages.refresh();
+        lines.schedule();
+        syncTracking();
         if (wasClean) await save();
       }
       return { settings: editor.settings() };

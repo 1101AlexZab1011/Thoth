@@ -62,7 +62,8 @@ export async function openSpace(name, query = "") {
 export async function deliver(page, message, attempts = 40) {
   for (let i = 0; i < attempts; i++) {
     try {
-      const reply = await browser.runtime.sendMessage({ to: page, ...message });
+      // `to` last: a command's own fields must not redirect it to another page.
+      const reply = await browser.runtime.sendMessage({ ...message, to: page });
       if (reply !== undefined) return reply;
     } catch { /* page not listening yet */ }
     await new Promise((resolve) => setTimeout(resolve, 150));

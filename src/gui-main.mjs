@@ -338,7 +338,7 @@ register("writer_render", "Render the open document to PDF with Quarto and show 
 
 register("writer_export", "Export the open document with Quarto, next to it: docx (Word; tracked changes and comments become Word's own), html or pdf. The result is shown in the viewer. The document's Layout settings (paper, margins, font, line numbers) apply.", {
   to: z.enum(["docx", "html", "pdf"]).default("docx"),
-}, async ({ to }) => text(await gui("page", { page: "writer", type: "export", to }, { timeoutMs: 660_000 })));
+}, async ({ to }) => text(await gui("page", { page: "writer", type: "export", format: to }, { timeoutMs: 660_000 })));
 
 register("writer_format", "Apply a ribbon command to `text` (an exact passage within one paragraph, selected first) or to the user's current selection: bold, italic, underline, strike, superscript, subscript, highlight, smallcaps, code, clear (character formatting); paragraph, heading (value 1–6), quote, bullet, ordered, indent, outdent (the block). Saves when the document had no unsaved changes.", {
   command: z.enum(["bold", "italic", "underline", "strike", "superscript", "subscript", "highlight", "smallcaps", "code", "clear", "paragraph", "heading", "quote", "bullet", "ordered", "indent", "outdent"]),

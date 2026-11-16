@@ -170,7 +170,7 @@ export function ask({ title, message = "", value, placeholder = "", ok = "OK", d
 }
 
 /** Ask the background script to do something. */
-export const background = (type, payload = {}) => browser.runtime.sendMessage({ to: "background", type, ...payload });
+export const background = (type, payload = {}) => browser.runtime.sendMessage({ ...payload, to: "background", type });
 
 export function formatSize(bytes) {
   if (bytes == null) return "";
