@@ -192,12 +192,16 @@ function firefoxUserAgent() {
 }
 
 /** Before its first request (it stays across navigations). */
+/** Make the tab's pages see Firefox. True when that changed something (the context had another agent). */
 function presentAsFirefox(info) {
   const context = info.browser?.browsingContext;
-  if (context) context.customUserAgent = firefoxUserAgent();
+  if (!context || context.customUserAgent === firefoxUserAgent()) return false;
+  context.customUserAgent = firefoxUserAgent();
+  return true;
 }
 
 function loadInTab(info, url) {
+  presentAsFirefox(info);
   // Typed into the address bar (or given by the agent on the user's behalf): loaded as the user's own navigation.
   info.browser.fixupAndLoadURIString(url, { triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal() });
 }
@@ -659,6 +663,10 @@ function installWeb(window) {
       closeWebMenu(window);
       if (oldTab && !isWebTab(oldTab) && isWebTab(tab)) window.mwBeforeWebTab = oldTab;
       if (isWebTab(tab)) {
+        // A tab restored at startup asked for its page as Thunderbird, which some sites turn away
+        // (Nextcloud's "unsupported browser"): the first time it is shown, it asks again as Firefox.
+        const url = tab.browser?.currentURI?.spec;
+        if (presentAsFirefox(tab) && url && url !== "about:blank") tab.browser.reload();
         window.mwLastWebTab = tab;
         const state = readSessions();
         const session = sessionOfTab(tab, state);
