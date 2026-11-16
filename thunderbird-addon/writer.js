@@ -1,4 +1,6 @@
-// Writer space: a word-processor-like editor for Quarto (.qmd) and Markdown.
+// Writer space: a word processor for Quarto (.qmd) and Markdown, laid out as ONLYOFFICE's document
+// editor: ribbon tabs (File, Home, Insert, Layout, References, Collaboration, View), rulers, the
+// document on sheets of its paper, side bars of panels and a status bar.
 //
 // Each open document has a tab (shared/doctabs.js) with its own editor (vendor/writer, see
 // src/writer/editor.mjs), which writes untouched blocks back byte for byte. Ctrl+S saves with a
@@ -8,23 +10,30 @@ import { host, HOST_ENDPOINT } from "./shared/broker.js";
 import { icon } from "./shared/icons.js";
 import { accel } from "./shared/keys.js";
 import { dirOf, nameOf, resolvePath, tildePath } from "./shared/paths.js";
-import { $, h, iconButton, contextMenu, background, toast, registerPage, ask } from "./shared/page.js";
+import { $, h, contextMenu, background, toast, registerPage, ask } from "./shared/page.js";
 import { DocTabs } from "./shared/doctabs.js";
-import { createWriter, merge3, labels, layoutOf, paperSize, authorHue } from "./vendor/writer/writer.mjs";
+import { createWriter, merge3, labels, layoutOf, paperSize, authorHue, layoutKey, pdfSettings } from "./vendor/writer/writer.mjs";
 import { createFind } from "./writer-find.js";
 import { createLineNumbers } from "./writer-lines.js";
-import { createPageView } from "./writer-pages.js";
+import { createPageView, DEFAULT_FONT, DEFAULT_SIZE } from "./writer-pages.js";
+import { createRulers } from "./writer-ruler.js";
 import { createReviewPanel } from "./writer-review.js";
+import { createBackstage } from "./writer-backstage.js";
+import { dropdown, colorMenu, tableGrid } from "./writer-menus.js";
+import { citationText, crossrefNumbers, crossrefText } from "./writer-cite.js";
 
 const GRAMMAR_DELAY = 1800;
 const BACKUPS = "@state/writer-backups";
+const PX_PER_CM = 96 / 2.54;
 
 const ui = {
-  title: $("#title"), subtitle: $("#subtitle"), state: $("#state"), actions: $("#actions"), render: $("#render"),
+  header: $("#header"), rbTabs: $("#rb-tabs"), title: $("#title"), state: $("#state"),
   toolbar: $("#toolbar"), conflict: $("#conflict"), outline: $("#outline"), scroll: $("#scroll"), start: $("#start"),
   page: $("#page"), editorRoot: $("#editor"), statusbar: $("#statusbar"), where: $("#where"), words: $("#words"), pageCount: $("#page-count"),
-  grammarCount: $("#grammar-count"), imageInput: $("#image-input"), zoom: $("#zoom"), language: $("#language"), body: $("#body"),
-  trackState: $("#track-state"),
+  grammarCount: $("#grammar-count"), imageInput: $("#image-input"), language: $("#language"), body: $("#body"),
+  leftbar: $("#leftbar"), leftpanel: $("#leftpanel"), rightpanel: $("#rightpanel"), rightbar: $("#rightbar"), workspace: $("#workspace"),
+  hruler: $("#hruler"), vruler: $("#vruler"), corner: $("#ruler-corner"), backstage: $("#backstage"),
+  sbToggles: $("#sb-toggles"), sbView: $("#sb-view"), sbZoom: $("#sb-zoom"),
 };
 
 // One state object per tab; `doc` and `editor` always point at the active tab's.
@@ -36,7 +45,6 @@ let editor = null;
 const backedUp = new Set();
 let saving = null;
 let watchToken = 0;
-let outlineOpen = false;
 let grammarOn = false;
 let grammarLanguage = "en-US";
 let zoom = 1;
@@ -46,13 +54,18 @@ let display = "markup"; // markup | final | original
 let grammarTimer = null;
 const grammarCache = new Map(); // block text → matches
 const imageUrls = new Map();
+// The window's parts, as View sets them (kept across sessions).
+const view = { rulers: true, statusBar: true, leftPanel: true, rightPanel: true, toolbar: true, marks: false };
+let leftOpen = null; // null | "comments" | "outline"
+let rightOpen = null; // null | "paragraph"
+let ribbonPeek = false; // the ribbon shown for a moment while "Always show toolbar" is off
 
 // -------------------------------------------------------------- helpers --
 
 const isDocument = (path) => /\.(qmd|md|markdown|rmd)$/i.test(path);
 const isQuarto = () => /\.qmd$/i.test(doc.path ?? "");
 
-/** The header chip, for states worth a word (the tab's dot already says "modified"). */
+/** The status bar's message and the header chip, for states worth a word (the tab's dot already says "modified"). */
 function setStatus(status, detail = "", tab = doc) {
   tab.status = status;
   if (tab !== doc) return;
@@ -61,6 +74,7 @@ function setStatus(status, detail = "", tab = doc) {
   ui.state.textContent = label ?? "";
   ui.state.className = `chip ${status === "saving" ? "unsaved" : status === "rendering" ? "" : "warning"}`;
   ui.state.title = detail;
+  ui.where.textContent = label ?? (status === "saved" ? "All changes saved" : "");
 }
 
 async function recent() {
@@ -79,6 +93,7 @@ async function remember(path) {
 async function createTabEditor(tab) {
   tab.root = h("div.tab-editor", { hidden: true });
   ui.editorRoot.append(tab.root);
+  tab.numbers = new Map();
   tab.editor = await createWriter(tab.root, {
     onChange: () => {
       if (!tab.path || tab.status === "readonly") return;
@@ -86,6 +101,7 @@ async function createTabEditor(tab) {
       if (tab !== doc) return;
       scheduleOutline();
       scheduleGrammar();
+      scheduleNumbers();
       drawFrames();
       find.refresh();
       lines.schedule();
@@ -93,11 +109,13 @@ async function createTabEditor(tab) {
       review.schedule();
       scheduleRibbon();
     },
-    onSelection: () => { if (tab === doc) { updateWhere(); scheduleRibbon(); review.schedule(); } },
+    onSelection: () => { if (tab === doc) { updateWhere(); scheduleRibbon(); review.schedule(); rulers.schedule(); } },
     resolveImage: (src) => resolveImage(tab, src),
     editInline: editChip,
+    // Citations and cross-references as the reader sees them.
+    inlineText: (attrs) => (attrs.kind === "cite" ? citationText(attrs.source, tab.bibliography, { apa: /apa/i.test(String(tab.editor?.settings().csl ?? "")) }) : crossrefText(attrs.source, tab.numbers)),
     describeInline: (attrs, el) => {
-      if (attrs.kind !== "cite") return;
+      if (attrs.kind !== "cite") { el.title = `${attrs.source} · click to edit`; return; }
       const keys = [...attrs.source.matchAll(/@([\w:.#$%&\-+?<>~/]+\w)/g)].map((m) => m[1]);
       const known = keys.map((k) => tab.bibliography.get(k));
       if (tab.bibliography.size && known.some((e) => !e)) el.classList.add("unknown");
@@ -118,6 +136,17 @@ ui.editorRoot.addEventListener("click", (event) => {
   const target = doc.root.querySelector(ref ? `dl[data-type="footnote_definition"][data-label="${CSS.escape(label)}"]` : `sup[data-type="footnote_reference"][data-label="${CSS.escape(label)}"]`);
   target?.scrollIntoView({ block: "center", behavior: "smooth" });
 });
+
+/** Cross-reference numbers follow the document's labels ("Figure 2"); redraw them when they change. */
+let numbersTimer = null;
+function scheduleNumbers(delay = 500) { clearTimeout(numbersTimer); numbersTimer = setTimeout(updateNumbers, delay); }
+function updateNumbers(tab = doc) {
+  if (!tab.editor) return;
+  const numbers = crossrefNumbers(labels(tab.editor.markdown()));
+  const same = numbers.size === tab.numbers.size && [...numbers].every(([k, v]) => tab.numbers.get(k) === v);
+  tab.numbers = numbers;
+  if (!same) tab.editor.redrawInlines();
+}
 
 async function resolveImage(tab, src) {
   if (/^(https?:|data:|blob:)/.test(src)) return src;
@@ -158,6 +187,7 @@ const tabs = new DocTabs({
       tab.blocks = result.blocks;
       if (!result.safe) tab.status = "readonly";
       tab.dirty = tab.status !== "readonly" && tab.editor.markdown() !== tab.base;
+      updateNumbers(tab);
       void loadBibliography(tab);
     },
     async show(tab) {
@@ -166,11 +196,9 @@ const tabs = new DocTabs({
       for (const other of tabs.tabs) if (other.root) other.root.hidden = other !== tab;
       ui.start.hidden = true;
       ui.page.hidden = false;
-      ui.toolbar.hidden = false;
-      ui.statusbar.hidden = false;
-      ui.render.hidden = false;
+      showChrome(true);
       ui.title.textContent = nameOf(tab.path);
-      ui.subtitle.textContent = tildePath(dirOf(tab.path));
+      ui.title.title = tildePath(tab.path);
       document.title = `${nameOf(tab.path)} · Writer`;
       ui.page.classList.toggle("readonly", !tab.safe);
       editor.view.setProps({ editable: () => tab.safe });
@@ -185,15 +213,17 @@ const tabs = new DocTabs({
       hideCard();
       find.close();
       renderToolbar();
-      renderActions();
+      renderSidebars();
       renderOutline();
       updateWhere();
       drawFrames();
-      lines.follow();
       pages.follow();
+      syncDocumentView();
+      lines.follow();
       syncTracking();
-      if (!review.open && (editor.comments().length || editor.changes().length)) review.set(true); else review.schedule();
-      requestAnimationFrame(() => { ui.scroll.scrollTop = tab.scroll ?? 0; });
+      if (editor.comments().length && !leftOpen) setLeft("comments");
+      review.schedule();
+      requestAnimationFrame(() => { ui.scroll.scrollTop = tab.scroll ?? 0; rulers.schedule(); });
       if (grammarOn) scheduleGrammar(200);
       await remember(tab.path);
       void watch(tab);
@@ -231,6 +261,7 @@ async function loadBibliography(tab = doc) {
   if (!tab.path) return;
   const bib = await host(`/v1/writer/bibliography?path=${encodeURIComponent(tab.path)}`).catch(() => null);
   for (const entry of bib?.entries ?? []) tab.bibliography.set(entry.key, entry);
+  tab.editor?.redrawInlines();
 }
 
 // ---------------------------------------------------------------- save --
@@ -371,11 +402,12 @@ function showDiff(theirs, mine) {
 
 // -------------------------------------------------------------- ribbon --
 //
-// The toolbar is a ribbon, as in ONLYOFFICE and Word: tabs (File, Home, Insert, Layout, References,
-// Review, View), each a row of button groups that wraps when the page is narrow. Buttons that show
-// a state (bold here, line numbers on) are pressed while it holds; updateRibbon() re-reads it.
+// The toolbar is ONLYOFFICE's ribbon: tabs in the header, each a white card of button groups. Every
+// tab starts with the same block (save and print; copy, paste, cut; undo, redo, copy formatting).
+// Buttons that show a state (bold here, rulers on) are pressed while it holds; updateRibbon()
+// re-reads it. Only what the document can keep (in the PDF and the Word file) is offered.
 
-const RIBBON_TABS = ["File", "Home", "Insert", "Layout", "References", "Review", "View"];
+const RIBBON_TABS = ["File", "Home", "Insert", "Layout", "References", "Collaboration", "View"];
 const STYLES = [
   ["paragraph", "Normal", "Normal text (Ctrl+Alt+0)", ["paragraph"]],
   ["h1", "Heading 1", "Heading 1 (Ctrl+Alt+1)", ["heading", 1]],
@@ -385,11 +417,15 @@ const STYLES = [
   ["quote", "Quote", "Quotation", ["quote"]],
   ["code_block", "Code", "Code block", ["codeblock"]],
 ];
-const PAPERS = [["a4", "A4", "21 × 29.7 cm"], ["letter", "Letter", "8.5 × 11 in"]];
-const MARGINS = [["2.5cm", "Normal", "2.5 cm all round"], ["2cm", "Moderate", "2 cm"], ["1.27cm", "Narrow", "1.27 cm"], ["3cm", "Wide", "3 cm"]];
-const SIZES = ["10pt", "11pt", "12pt"];
-const SPACINGS = [[1, "1.0"], [1.15, "1.15"], [1.5, "1.5"], [2, "2.0"]];
-const LANGUAGES = [["en-US", "English (US)"], ["en-GB", "English (UK)"], ["de-DE", "German"], ["fr", "French"], ["es", "Spanish"], ["ru-RU", "Russian"], ["uk-UA", "Ukrainian"]];
+const PAPERS = [["a4", "A4", "21 cm × 29.7 cm"], ["letter", "US Letter", "21.59 cm × 27.94 cm"]];
+const MARGINS = [["2.5cm", "Normal", "Top: 2.5 cm  Left: 2.5 cm  Bottom: 2.5 cm  Right: 2.5 cm"], ["1.27cm", "Narrow", "Top: 1.27 cm  Left: 1.27 cm  Bottom: 1.27 cm  Right: 1.27 cm"], ["2cm", "Moderate", "Top: 2 cm  Left: 2 cm  Bottom: 2 cm  Right: 2 cm"], ["3cm", "Wide", "Top: 3 cm  Left: 3 cm  Bottom: 3 cm  Right: 3 cm"]];
+const FONT_SIZES = [8, 9, 10, 11, 12, 14, 16, 18, 20, 22, 24, 26, 28, 36, 48, 72];
+const CASES = [["sentence", "Sentence case."], ["lower", "lowercase"], ["upper", "UPPERCASE"], ["title", "Capitalize Each Word"], ["toggle", "tOGGLE cASE"]];
+const SPACINGS = [1, 1.15, 1.5, 2, 2.5, 3];
+const LANGUAGES = [["en-US", "English (United States)"], ["en-GB", "English (United Kingdom)"], ["de-DE", "German (Germany)"], ["fr", "French"], ["es", "Spanish"], ["ru-RU", "Russian"], ["uk-UA", "Ukrainian"]];
+const DISPLAYS = [["markup", "Markup", "All changes, in colour"], ["final", "Final", "As if every change were accepted"], ["original", "Original", "As before the changes"]];
+const INDENT_STEP = 1.25; // cm, as ONLYOFFICE indents a paragraph
+let painter = null; // the marks "Copy formatting" picked up, until it gives them to a selection
 
 let ribbonState = [];
 let ribbonUpdaters = []; // (state) => void, for controls that show more than pressed or not
@@ -407,21 +443,22 @@ function updateRibbon() {
   const state = { ...editor.formatting(), settings: editor.settings() };
   for (const [button, holds] of ribbonState) button.setAttribute("aria-pressed", String(Boolean(holds(state))));
   for (const update of ribbonUpdaters) update(state);
+  updateStatusToggles();
 }
 
 /** The style of the block the cursor is in, as the style box names it. */
-const BLOCK_NAMES = { bullet: "Bulleted list", ordered: "Numbered list", h5: "Heading 5", h6: "Heading 6" };
+const BLOCK_NAMES = { bullet: "List Paragraph", ordered: "List Paragraph", h5: "Heading 5", h6: "Heading 6" };
 const styleName = (block) => STYLES.find(([b]) => b === block)?.[1] ?? BLOCK_NAMES[block] ?? "Normal";
 
-/** The paragraph style box, as in Word and ONLYOFFICE: the current style, and a list drawn in each style. */
-function styleSelect() {
-  const label = h("span.rb-style-label", {}, "Normal");
-  const button = h("button.rb-style-select", { type: "button", title: "Paragraph style", "aria-haspopup": "menu", onclick: () => openStyleMenu(button) }, label, icon("keyboard_arrow_down", { size: 16 }));
-  ribbonUpdaters.push((state) => {
-    label.textContent = styleName(state.block);
-    label.className = `rb-style-label rb-style-${STYLES.some(([b]) => b === state.block) ? state.block : "paragraph"}`;
+/** The style gallery, as in ONLYOFFICE: the first styles as tiles, the current one framed; the arrow lists all. */
+function styleGallery() {
+  const tiles = STYLES.slice(0, 5).map(([block, label, title, [command, payload]]) => {
+    const tile = h(`button.rb-tile.rb-style-${block}`, { type: "button", title, onclick: () => { runCommand(command, payload); } }, h("span", {}, label));
+    ribbonState.push([tile, (state) => state.block === block]);
+    return tile;
   });
-  return button;
+  const more = h("button.rb-gallery-more", { type: "button", title: "All styles", "aria-haspopup": "menu", onclick: () => openStyleMenu(more) }, icon("w-keyboard_arrow_down", { size: 20 }));
+  return h("span.rb-gallery", {}, h("span.rb-tiles", {}, ...tiles), more);
 }
 
 function openStyleMenu(anchor) {
@@ -429,7 +466,7 @@ function openStyleMenu(anchor) {
   if (!editor) return;
   const current = editor.formatting().block;
   const close = () => { menu.remove(); removeEventListener("pointerdown", outside, true); removeEventListener("keydown", keys, true); };
-  const pickStyle = ([, , , [command, payload]]) => { close(); try { editor.command(command, payload); } catch (error) { toast(error.message); } scheduleRibbon(); };
+  const pickStyle = ([, , , [command, payload]]) => { close(); runCommand(command, payload); };
   const items = STYLES.map((style) => h(`button.rb-style-item.rb-style-${style[0]}${style[0] === current ? ".active" : ""}`, { type: "button", role: "menuitem", title: style[2], onclick: () => pickStyle(style) }, style[1]));
   const menu = h("div.menu.rb-style-menu", { role: "menu" }, ...items);
   document.body.append(menu);
@@ -446,106 +483,412 @@ function openStyleMenu(anchor) {
   (items.find((b) => b.classList.contains("active")) ?? items[0]).focus();
 }
 
+/** Run an editor command from the ribbon; errors become a toast. */
+function runCommand(name, payload) {
+  if (!editor) return;
+  try { editor.command(name, payload); } catch (error) { toast(error.message); }
+  scheduleRibbon();
+}
+
+const editable = () => Boolean(editor) && doc.status !== "readonly";
+
 function renderToolbar() {
   ribbonState = [];
   ribbonUpdaters = [];
-  const run = (name, payload) => () => { try { editor.command(name, payload); scheduleRibbon(); } catch (error) { toast(error.message); } };
+  if (ribbonTab === "File") ribbonTab = "Home";
+  const run = (name, payload) => () => runCommand(name, payload);
   const track = (button, holds) => { if (holds) { button.setAttribute("aria-pressed", "false"); ribbonState.push([button, holds]); } return button; };
-  // An icon button, a button with a label, a button that opens a menu of choices.
-  const tb = (name, title, onclick, holds) => track(iconButton(name, title, onclick, { small: true }), holds);
-  const lb = (name, label, title, onclick, holds) => track(h("button.rb-btn", { type: "button", title, onclick }, icon(name, { size: 18 }), h("span", {}, label)), holds);
-  const menu = (name, label, title, items) => h("button.rb-btn.rb-menu", { type: "button", title, onclick: (event) => contextMenu(event, items()) }, icon(name, { size: 18 }), h("span", {}, label), icon("keyboard_arrow_down", { size: 16 }));
+  const caret = () => { const el = icon("w-keyboard_arrow_down", { size: 14 }); el.classList.add("rb-caret"); return el; };
+  // A small icon button; one that opens a list (with an arrow); a big button with a label underneath.
+  const tb = (name, title, onclick, holds, { disabled = false } = {}) => track(h("button.rb-ico", { type: "button", title, "aria-label": title, disabled, onclick }, icon(`w-${name}`, { size: 20 })), holds);
+  const tbm = (name, title, items, holds) => {
+    const button = h("button.rb-ico", { type: "button", title, "aria-label": title, "aria-haspopup": "menu", onclick: () => dropdown(button, items()) }, icon(`w-${name}`, { size: 20 }), caret());
+    return track(button, holds);
+  };
+  const big = (name, label, title, onclick, holds, { menu = false, disabled = false } = {}) => {
+    const button = h("button.rb-btn", { type: "button", title, disabled, ...(menu ? { "aria-haspopup": "menu" } : {}) }, icon(`w-${name}`, { size: 26 }), h("span.rb-label", {}, label), menu ? caret() : null);
+    button.addEventListener("click", () => (menu ? dropdown(button, onclick()) : onclick(button)));
+    return track(button, holds);
+  };
+  const wide = (name, label, title, onclick, { menu = false, disabled = false } = {}) => {
+    const button = h("button.rb-wide", { type: "button", title, disabled }, icon(`w-${name}`, { size: 20 }), label, menu ? caret() : null);
+    button.addEventListener("click", () => (menu ? dropdown(button, onclick()) : onclick(button)));
+    return button;
+  };
   const group = (...items) => h("span.tb-group", {}, ...items);
+  const stack = (top, bottom) => h("span.rb-stack", {}, h("span.rb-row", {}, ...top), h("span.rb-row", {}, ...(bottom ?? [])));
+  const combo = (title, width, onclick, value) => {
+    const label = h("span", {}, "");
+    const button = h("button.rb-combo", { type: "button", title, style: { width: `${width}px` }, onclick: () => onclick(button) }, label, icon("w-keyboard_arrow_down", { size: 15 }));
+    ribbonUpdaters.push((state) => { label.textContent = value(state); });
+    return button;
+  };
+  const check = (label, title, holds, onclick) => {
+    const box = h("span");
+    const button = h("button.rb-check", { type: "button", title, onclick }, box, label);
+    ribbonUpdaters.push((state) => { const on = Boolean(holds(state)); box.replaceChildren(icon(on ? "w-check_box" : "w-check_box_outline_blank", { size: 20 })); button.setAttribute("aria-checked", String(on)); });
+    return button;
+  };
+  const choice = (current) => (value) => value === current;
   const mark = (name) => (s) => s.marks.has(name);
-  const settings = editor?.settings() ?? {};
-  const choice = (current) => (value) => (value === current ? "check" : null);
+  const settings = pdfSettings(editor?.settings() ?? {});
+
+  // A button greyed out while it has nothing to do, as ONLYOFFICE does it.
+  const enabled = (button, when) => { ribbonUpdaters.push((state) => { button.disabled = !when(state); }); return button; };
+  const hasSelection = () => !editor.view.state.selection.empty;
+  // The block every tab starts with.
+  const common = () => [
+    group(stack([tb("save", "Save (Ctrl+S)", () => void tabs.save())], [tb("print", "Print (Ctrl+P): the PDF, to print from the viewer", () => void exportAs("pdf"))])),
+    group(stack(
+      [enabled(tb("content_copy", "Copy (Ctrl+C)", () => clipboard("copy")), hasSelection), tb("content_paste", "Paste (Ctrl+V)", () => clipboard("paste")), enabled(tb("content_cut", "Cut (Ctrl+X)", () => clipboard("cut")), hasSelection)],
+      [enabled(tb("undo", "Undo (Ctrl+Z)", run("undo")), () => editor.canUndo()), enabled(tb("redo", "Redo (Ctrl+Y)", run("redo")), () => editor.canRedo()), tb("format_paint", "Copy style (Ctrl+Shift+C): click, then select the text to give it to", formatPainter, () => painter !== null)])),
+  ];
+
+  const lineSpacingItems = () => {
+    const s = editor.formatting();
+    const now = Number(s.paragraph["line-height"] ?? 1);
+    return [
+      ...SPACINGS.map((v) => ({ label: v === 1 ? "1.0" : String(v), checked: Math.abs(v - now) < 0.001, run: () => setLineSpacing(v) })),
+      "-",
+      s.paragraph["margin-top"] ? { label: "Remove space before paragraph", run: () => paragraphStyle({ "margin-top": null }) } : { label: "Add space before paragraph", run: () => paragraphStyle({ "margin-top": "12pt" }) },
+      s.paragraph["margin-bottom"] ? { label: "Remove space after paragraph", run: () => paragraphStyle({ "margin-bottom": null }) } : { label: "Add space after paragraph", run: () => paragraphStyle({ "margin-bottom": "12pt" }) },
+    ];
+  };
 
   const panels = {
-    File: () => [
-      group(lb("save", "Save", "Save (Ctrl+S)", () => save()), lb("note_add", "New", "New document", newDocument), lb("folder_open", "Open", "Open a document", openDialog)),
-      group(lb("picture_as_pdf", "PDF", "Render the PDF and show it", () => void render()), lb("description", "Word", "Export to Word (.docx)", () => void exportAs("docx")), lb("html", "Web page", "Export to a web page (.html)", () => void exportAs("html"))),
-      group(lb("folder", "Show in Files", "Show the document in the Files panel", () => background("files-reveal", { path: doc.path })), lb("tune", "Document settings", "Edit the document's settings (its YAML header)", editHeader)),
-    ],
     Home: () => [
-      group(tb("undo", "Undo (Ctrl+Z)", run("undo")), tb("redo", "Redo (Ctrl+Shift+Z)", run("redo"))),
-      group(styleSelect()),
-      group(
-        tb("format_bold", "Bold (Ctrl+B)", run("bold"), mark("strong")),
-        tb("format_italic", "Italic (Ctrl+I)", run("italic"), mark("emphasis")),
-        tb("format_underlined", "Underline (Ctrl+U)", run("underline"), mark("underline")),
-        tb("format_strikethrough", "Strikethrough", run("strike"), mark("strike_through")),
-        tb("superscript", "Superscript (Ctrl+.)", run("superscript"), mark("superscript")),
-        tb("subscript", "Subscript (Ctrl+,)", run("subscript"), mark("subscript")),
-        tb("ink_highlighter", "Highlight", run("highlight"), mark("highlight")),
-        tb("text_format", "Small caps", run("smallcaps"), mark("smallcaps")),
-        tb("code", "Inline code (Ctrl+E)", run("code"), mark("inlineCode")),
-        tb("format_clear", "Clear formatting (Ctrl+Space)", run("clear"))),
-      group(
-        tb("format_list_bulleted", "Bulleted list", run("bullet"), (s) => s.block === "bullet"),
-        tb("format_list_numbered", "Numbered list", run("ordered"), (s) => s.block === "ordered"),
-        tb("format_indent_decrease", "Decrease indent (Shift+Tab)", run("outdent")),
-        tb("format_indent_increase", "Increase indent (Tab)", run("indent"))),
-      group(lb("search", "Find", "Find (Ctrl+F)", () => find.open()), lb("find_replace", "Replace", "Find and replace (Ctrl+H)", () => find.open({ replace: true }))),
+      ...common(),
+      group(stack(
+        [combo("Font", 124, (button) => void chooseFont(button), (s) => s.text["font-family"] ?? (settings.mainfont ? String(settings.mainfont) : DEFAULT_FONT)),
+          combo("Font size", 44, (button) => dropdown(button, FONT_SIZES.map((v) => ({ label: String(v), checked: currentSize() === v, run: () => setFontSize(v) }))), () => String(currentSize())),
+          tb("text_increase", "Increment font size (Ctrl+])", () => stepFontSize(1)), tb("text_decrease", "Decrement font size (Ctrl+[)", () => stepFontSize(-1)),
+          tbm("match_case", "Change case", () => CASES.map(([mode, label]) => ({ label, run: () => changeCase(mode) })))],
+        [
+          tb("format_bold", "Bold (Ctrl+B)", run("bold"), mark("strong")),
+          tb("format_italic", "Italic (Ctrl+I)", run("italic"), mark("emphasis")),
+          tb("format_underlined", "Underline (Ctrl+U)", run("underline"), mark("underline")),
+          tb("format_strikethrough", "Strikethrough", run("strike"), mark("strike_through")),
+          tb("superscript", "Superscript (Ctrl+.)", run("superscript"), mark("superscript")),
+          tb("subscript", "Subscript (Ctrl+,)", run("subscript"), mark("subscript")),
+          colorButton("format_ink_highlighter", "Highlight color", "#FFFF00", (button) => colorMenu(button, { highlight: true, none: "No fill", onPick: setHighlight })),
+          colorButton("format_color_text", "Font color", "#000000", (button) => colorMenu(button, { onPick: (c) => textStyle({ color: c }) }), (s) => s.text.color ?? "#000000"),
+          tb("ink_eraser", "Clear style (Ctrl+Space)", clearStyle)])),
+      group(stack(
+        [tbm("format_list_bulleted", "Bullets", () => [{ label: "Bulleted list", checked: editor.formatting().block === "bullet", run: run("bullet") }, { label: "None", run: () => { if (editor.formatting().block === "bullet") runCommand("bullet"); } }], (s) => s.block === "bullet"),
+          tbm("format_list_numbered", "Numbering", () => [{ label: "1. 2. 3.", checked: editor.formatting().block === "ordered", run: run("ordered") }, { label: "None", run: () => { if (editor.formatting().block === "ordered") runCommand("ordered"); } }], (s) => s.block === "ordered"),
+          tb("format_indent_decrease", "Decrease indent", () => indent(-1)),
+          tb("format_indent_increase", "Increase indent", () => indent(1)),
+          h("span.rb-split"),
+          tbm("format_line_spacing", "Paragraph line spacing", lineSpacingItems)],
+        [tb("format_align_left", "Align left (Ctrl+L)", () => align("left"), (s) => !s.paragraph["text-align"] || s.paragraph["text-align"] === "left"),
+          tb("format_align_center", "Align center (Ctrl+E)", () => align("center"), (s) => s.paragraph["text-align"] === "center"),
+          tb("format_align_right", "Align right (Ctrl+R)", () => align("right"), (s) => s.paragraph["text-align"] === "right"),
+          tb("format_align_justify", "Justified (Ctrl+J)", () => align("justify"), (s) => s.paragraph["text-align"] === "justify"),
+          h("span.rb-split"),
+          tb("format_paragraph", "Nonprinting characters (Ctrl+Shift+Num8)", () => setView({ marks: !view.marks }), () => view.marks)])),
+      h("span.tb-group.rb-gallery-group", {}, styleGallery()),
+      group(stack([tb("find_replace", "Replace (Ctrl+H)", () => find.open({ replace: true }))], [tb("select_all", "Select all (Ctrl+A)", selectAll)])),
     ],
     Insert: () => [
-      group(lb("table", "Table", "Insert a table", run("table")), lb("image", "Figure", "Insert a figure", insertFigure), lb("link", "Link", "Link the selected text", insertLink)),
-      group(lb("functions", "Equation", "A numbered display equation", insertEquation), h("button.tb-text", { type: "button", title: "Inline math", onclick: insertInlineMath }, "x²"), lb("special_character", "Symbol", "Insert a symbol", insertSymbol)),
-      group(lb("insert_page_break", "Page break", "Start a new page here (PDF and Word)", insertPageBreak), lb("horizontal_rule", "Divider", "A horizontal rule", run("hr"))),
-      group(lb("notes", "Footnote", "A footnote at the cursor", () => void insertFootnote()), lb("lightbulb", "Callout", "A note, tip or warning box", insertCallout), lb("data_object", "Code cell", "A Python code cell", insertCodeCell)),
+      ...common(),
+      group(big("insert_page_break", "Breaks", "Insert a page break", () => [{ label: "Insert page break", run: insertPageBreak }], null, { menu: true })),
+      group(big("table", "Table", "Insert table", (button) => tableGrid(button, (rows, cols) => insertTable(rows, cols), { more: insertCustomTable }))),
+      group(big("image", "Image", "Insert image", () => [
+        { label: "Image from file", run: () => ui.imageInput.click() },
+        { label: "Image from the project…", run: async () => { const path = await ask({ title: "Image", message: "Path relative to the document", value: "figures/", ok: "Next" }); if (path) await placeFigure(path); } },
+        { label: "Image from URL…", run: async () => { const url = await ask({ title: "Image from URL", value: "https://", ok: "Next" }); if (url) await placeFigure(url); } },
+      ], null, { menu: true })),
+      group(big("add_comment", "Comment", "Add comment (Ctrl+Alt+M)", () => void newComment()), big("link", "Link", "Add hyperlink (Ctrl+K)", () => void insertLink())),
+      group(big("calendar_today", "Date & Time", "Insert the date", () => void insertDate())),
+      group(big("functions", "Equation", "Insert equation", () => [{ label: "Display equation", run: () => void insertEquation() }, { label: "Inline equation", run: () => void insertInlineMath() }], null, { menu: true }),
+        big("special_character", "Symbol", "Insert symbol", () => void insertSymbol())),
     ],
     Layout: () => {
       const layout = layoutSettings(settings);
+      const numbering = lineNumbering(settings);
       return [
+        ...common(),
         group(
-          menu(layout.landscape ? "crop_landscape" : "crop_portrait", layout.landscape ? "Landscape" : "Portrait", "Orientation", () => [false, true].map((v) => ({ label: v ? "Landscape" : "Portrait", icon: choice(layout.landscape)(v), run: () => setLayout({ landscape: v }) }))),
-          menu("description", (PAPERS.find(([v]) => v === layout.paper) ?? ["", "Size"])[1], "Paper size", () => PAPERS.map(([v, label, hint]) => ({ label: `${label} (${hint})`, icon: choice(layout.paper)(v), run: () => setLayout({ paper: v }) }))),
-          menu("margin", (MARGINS.find(([v]) => v === layout.margin) ?? ["", layout.margin ? `Margins ${layout.margin}` : "Margins"])[1], "Margins", () => [...MARGINS.map(([v, label, hint]) => ({ label: `${label} (${hint})`, icon: choice(layout.margin)(v), run: () => setLayout({ margin: v }) })), "-", { label: "Custom…", icon: "edit", run: customMargins }]),
-          menu("view_column", layout.columns === 2 ? "Two columns" : "One column", "Columns", () => [1, 2].map((v) => ({ label: v === 2 ? "Two columns" : "One column", icon: choice(layout.columns)(v), run: () => setLayout({ columns: v }) })))),
+          big("margin", "Margins", "Margins", () => [...MARGINS.map(([v, label, hint]) => ({ label: `${label}   ${hint}`, checked: layout.margin === v || (!layout.margin && v === "2.5cm"), run: () => setLayout({ margin: v }) })), "-", { label: "Custom margins…", run: customMargins }], null, { menu: true }),
+          big(layout.landscape ? "crop_rotate" : "crop_portrait", "Orientation", "Page orientation", () => [false, true].map((v) => ({ label: v ? "Landscape" : "Portrait", checked: Boolean(layout.landscape) === v, run: () => setLayout({ landscape: v }) })), null, { menu: true }),
+          big("description", "Size", "Page size", () => PAPERS.map(([v, label, hint]) => ({ label: `${label}   ${hint}`, checked: (layout.paper || "a4") === v, run: () => setLayout({ paper: v }) })), null, { menu: true }),
+          big("view_column", "Columns", "Columns", () => [1, 2].map((v) => ({ label: v === 2 ? "Two" : "One", checked: layout.columns === v, run: () => setLayout({ columns: v }) })), null, { menu: true }),
+          big("insert_page_break", "Breaks", "Insert a page break", () => [{ label: "Insert page break", run: insertPageBreak }], null, { menu: true }),
+          big("format_list_numbered", "Line\nNumbers", "Line numbers", () => [["none", "None"], ["continuous", "Continuous"], ["page", "Restart each page"]].map(([v, label]) => ({ label, checked: numbering === v, run: () => setLineNumbering(v) })), null, { menu: true })),
         group(
-          menu("text_fields", settings.mainfont ? String(settings.mainfont) : "Default font", "Font of the document (PDF and Word)", () => [{ label: "Choose a font…", icon: "search", run: chooseFont }, ...(settings.mainfont ? [{ label: "Default font", icon: "refresh", run: () => setSettings({ mainfont: null }) }] : [])]),
-          menu("format_size", settings.fontsize ? String(settings.fontsize) : "Size", "Font size of the body text", () => SIZES.map((v) => ({ label: v, icon: choice(String(settings.fontsize ?? ""))(v), run: () => setSettings({ fontsize: v }) }))),
-          menu("format_line_spacing", settings.linestretch ? `Spacing ${settings.linestretch}` : "Spacing", "Line spacing", () => SPACINGS.map(([v, label]) => ({ label, icon: choice(Number(settings.linestretch ?? 1))(v), run: () => setSettings({ linestretch: v === 1 ? null : v }) })))),
-        group(lb("format_list_numbered", "Line numbers", "Number the lines in the PDF and the Word file", () => setSettings({ "writer-options.line-numbers": settings["writer-options"]?.["line-numbers"] ? null : true }), (s) => s.settings["writer-options"]?.["line-numbers"] === true)),
+          h("span.rb-stack", {}, spinField("Left indent", "margin-left", "cm"), spinField("Right indent", "margin-right", "cm")),
+          h("span.rb-split"),
+          h("span.rb-stack", {}, spinField("Space before", "margin-top", "cm"), spinField("Space after", "margin-bottom", "cm"))),
       ];
     },
     References: () => [
-      group(lb("menu_book", "Citation", "Insert a citation", insertCitation), lb("tag", "Cross-reference", "Refer to a figure, table, equation or section", insertCrossref)),
-      group(lb("notes", "Footnote", "A footnote at the cursor", () => void insertFootnote()), lb("library_books", "Bibliography", "The bibliography file (.bib) and citation style", chooseBibliography), lb("toc", "Contents", "A table of contents at the start (PDF and Word)", () => setSettings({ toc: settings.toc ? null : true }), (s) => s.settings.toc === true)),
+      ...common(),
+      group(big("toc", "Table of\nContents", "Table of contents (at the start of the PDF and the Word file)", () => [
+        { label: "Insert table of contents", checked: settings.toc === true, run: () => setSettings({ toc: true }) },
+        { label: "Remove table of contents", disabled: settings.toc !== true, run: () => setSettings({ toc: null }) },
+      ], null, { menu: true }),
+      h("span.rb-stack", {}, wide("format_h1", "Add Text", "The heading level of this paragraph in the table of contents", () => [
+        { label: "Do not show in table of contents", checked: !/^h\d$/.test(editor.formatting().block), run: run("paragraph") },
+        ...[1, 2, 3].map((n) => ({ label: `Level ${n}`, checked: editor.formatting().block === `h${n}`, run: run("heading", n) })),
+      ], { menu: true }), wide("refresh", "Update Table", "The table of contents is made when the document is rendered", () => toast("The table of contents is made when the document is rendered"), { disabled: settings.toc !== true }))),
+      group(big("superscript", "Footnote", "Footnote", () => [{ label: "Insert footnote", run: () => void insertFootnote() }, "-", { label: "Go to previous footnote", run: () => gotoFootnote(-1) }, { label: "Go to next footnote", run: () => gotoFootnote(1) }], null, { menu: true })),
+      group(big("link", "Link", "Add hyperlink (Ctrl+K)", () => void insertLink()), big("bookmark", "Bookmark", "Name this heading, to refer to it", () => void addBookmark())),
+      group(big("tag", "Cross-\nreference", "Refer to a figure, table, equation or section", () => void insertCrossref())),
+      group(big("menu_book", "Citation", "Insert a citation from the bibliography", () => void insertCitation()), big("library_books", "Bibliography", "The bibliography file (.bib) and citation style", () => void chooseBibliography())),
     ],
-    Review: () => [
-      group(lb("track_changes", "Track changes", "Record insertions and deletions as changes to accept or reject (saved with the document)", () => void setTracking(!isTracking()), () => isTracking()),
-        menu("visibility", DISPLAYS.find(([v]) => v === display)[1], "What the page shows", () => DISPLAYS.map(([v, label, hint]) => ({ label: `${label} — ${hint}`, icon: choice(display)(v), run: () => setDisplay(v) })))),
-      group(tb("keyboard_arrow_up", "Previous change", () => gotoChange(-1)), tb("keyboard_arrow_down", "Next change", () => gotoChange(1)),
-        menu("check", "Accept", "Accept changes", () => [{ label: "Accept this change", icon: "check", run: () => resolveAt(true) }, { label: "Accept all changes", icon: "done_all", run: () => resolveAll(true) }]),
-        menu("close", "Reject", "Reject changes", () => [{ label: "Reject this change", icon: "close", run: () => resolveAt(false) }, { label: "Reject all changes", icon: "remove_done", run: () => resolveAll(false) }])),
-      group(lb("add_comment", "Comment", "Comment on the selected text (Ctrl+Alt+M)", () => void newComment()), lb("comment", "Comments", "The comments and changes beside the page", () => { review.set(!review.open); updateRibbon(); }, () => review.open)),
-      group(menu("picture_as_pdf", (settings["writer-options"]?.review === "markup") ? "PDF: markup" : "PDF: final", "How tracked changes and comments appear in the PDF and web page (Word keeps them as its own)", () => [
-        { label: "Final text (every change accepted, no comments)", icon: choice(settings["writer-options"]?.review === "markup" ? "markup" : "final")("final"), run: () => setSettings({ "writer-options.review": null }) },
-        { label: "Markup (changes in colour, comments as notes)", icon: choice(settings["writer-options"]?.review === "markup" ? "markup" : "final")("markup"), run: () => setSettings({ "writer-options.review": "markup" }) },
-      ])),
-      group(lb("spellcheck", "Spelling & grammar", "Check spelling and grammar as you type (LanguageTool)", toggleGrammar, () => grammarOn),
-        menu("public", (LANGUAGES.find(([v]) => v === grammarLanguage) ?? ["", grammarLanguage])[1], "Language for spelling and grammar", () => LANGUAGES.map(([v, label]) => ({ label, icon: choice(grammarLanguage)(v), run: () => setLanguage(v) })))),
-      group(lb("rate_review", "Review with agent", "Review the selected text (Ctrl+Alt+R)", () => void reviewSelection()), lb("close", "Clear reviews", "Remove the agent's review marks (Esc)", () => { editor.clearReviews(); hideCard(); drawFrames(); })),
-    ],
+    Collaboration: () => {
+      const markup = settings["writer-options"]?.review === "markup";
+      return [
+        ...common(),
+        group(big("add_comment", "Add\nComment", "Add comment (Ctrl+Alt+M)", () => void newComment()),
+          big("delete", "Delete", "Delete comments", () => [{ label: "Delete current comment", run: () => removeComment(false) }, { label: "Delete all comments", run: () => removeComment(true) }], null, { menu: true }),
+          big("check_circle", "Resolve", "Resolve comments", () => [{ label: "Resolve current comment", run: () => removeComment(false) }, { label: "Resolve all comments", run: () => removeComment(true) }], null, { menu: true })),
+        group(big("track_changes", "Track\nChanges", "Track changes (Ctrl+Shift+E)", () => [
+          { label: "On", checked: isTracking(), run: () => void setTracking(true) },
+          { label: "Off", checked: !isTracking(), run: () => void setTracking(false) },
+          "-",
+          { label: "PDF and web page: final text", checked: !markup, run: () => setSettings({ "writer-options.review": null }) },
+          { label: "PDF and web page: show the markup", checked: markup, run: () => setSettings({ "writer-options.review": "markup" }) },
+        ], () => isTracking(), { menu: true }),
+          big("preview", "Display\nMode", "Display mode", () => DISPLAYS.map(([v, label, hint]) => ({ label: `${label} — ${hint}`, checked: display === v, run: () => setDisplay(v) })), null, { menu: true }),
+          big("arrow_upward", "Previous", "Go to the previous change", () => gotoChange(-1)),
+          big("arrow_downward", "Next", "Go to the next change", () => gotoChange(1)),
+          big("check", "Accept", "Accept changes", () => [{ label: "Accept current change", run: () => resolveAt(true) }, { label: "Accept all changes", run: () => resolveAll(true) }], null, { menu: true }),
+          big("close", "Reject", "Reject changes", () => [{ label: "Reject current change", run: () => resolveAt(false) }, { label: "Reject all changes", run: () => resolveAll(false) }], null, { menu: true })),
+        group(big("rate_review", "Review\nwith agent", "The agent reviews the selected text (Ctrl+Alt+R)", () => void reviewSelection()),
+          big("spellcheck", "Spelling", "Check spelling and grammar as you type", toggleGrammar, () => grammarOn)),
+      ];
+    },
     View: () => [
-      group(lb("toc", "Navigation", "The outline of headings", () => { outlineOpen = !outlineOpen; renderOutline(); updateRibbon(); }, () => outlineOpen),
-        lb("format_list_numbered", "Line numbers", "Number the lines in the margin", () => void setLineNumbers(!lines.on), () => lines.on),
-        lb("pageview", "Page view", "Show the page as the PDF sets it: paper, margins, font, line spacing and page ends", () => void setPageView(!pages.on), () => pages.on)),
-      group(tb("zoom_out", "Zoom out", () => setZoom(stepZoom(-1))), h("button.tb-text", { type: "button", title: "Zoom to 100%", onclick: () => setZoom(1) }, `${Math.round(zoom * 100)}%`), tb("zoom_in", "Zoom in", () => setZoom(stepZoom(1)))),
+      ...common(),
+      group(big("toc", "Headings", "Headings: the document's outline in the left panel", () => setLeft(leftOpen === "outline" ? null : "outline"), () => leftOpen === "outline")),
+      group(h("span.rb-stack", {}, h("span.rb-row", {}, combo("Zoom", 74, (button) => dropdown(button, ZOOMS.map((z) => ({ label: `${Math.round(z * 100)}%`, checked: Math.abs(z - zoom) < 0.001, run: () => setZoom(z) }))), () => `${Math.round(zoom * 100)}%`)), h("span.rb-row", { style: { justifyContent: "center" } }, "Zoom"))),
+      group(h("span.rb-stack", {}, wide("fit_page", "Fit To Page", "Fit to page", () => fit("page")), wide("fit_width", "Fit To Width", "Fit to width", () => fit("width"))),
+        h("span.rb-stack", {}, wide("zoom_in", "Zoom to 100%", "Zoom to 100%", () => setZoom(1)))),
+      group(h("span.rb-stack", {}, check("Always Show Toolbar", "Keep the ribbon open", () => view.toolbar, () => setView({ toolbar: !view.toolbar })), check("Status Bar", "Show the status bar", () => view.statusBar, () => setView({ statusBar: !view.statusBar }))),
+        h("span.rb-stack", {}, check("Left Panel", "Show the left bar", () => view.leftPanel, () => setView({ leftPanel: !view.leftPanel })), check("Right Panel", "Show the right bar", () => view.rightPanel, () => setView({ rightPanel: !view.rightPanel })))),
+      group(h("span.rb-stack", {}, check("Rulers", "Show the rulers", () => view.rulers, () => setView({ rulers: !view.rulers })), h("span"))),
     ],
   };
 
-  const tabsRow = h("div.rb-tabs", { role: "tablist" }, ...RIBBON_TABS.map((name) => h(`button.rb-tab${name === ribbonTab ? ".active" : ""}`, {
-    type: "button", role: "tab", "aria-selected": String(name === ribbonTab),
-    onclick: () => { ribbonTab = name; void browser.storage.local.set({ "writer.ribbon": name }).catch(() => {}); renderToolbar(); },
-  }, name)));
-  ui.toolbar.replaceChildren(tabsRow, h("div.tb-rows", { role: "tabpanel" }, ...panels[ribbonTab]()));
+  renderRibbonTabs();
+  const rows = h("div.tb-rows", { role: "tabpanel" }, ...panels[ribbonTab]());
+  const previous = ui.toolbar.querySelector(".tb-rows");
+  if (previous?.dataset.tab !== ribbonTab) rows.classList.add("enter");
+  rows.dataset.tab = ribbonTab;
+  ui.toolbar.replaceChildren(rows);
+  ui.toolbar.classList.toggle("collapsed", !view.toolbar && !ribbonPeek);
   updateRibbon();
 }
 
-function renderActions() {
-  ui.actions.replaceChildren(iconButton("save", "Save (Ctrl+S)", () => save({ force: false })));
-  ui.render.replaceChildren(icon("picture_as_pdf", { size: 18 }), "Render PDF");
+function renderRibbonTabs() {
+  ui.rbTabs.replaceChildren(...RIBBON_TABS.map((name) => h(`button.rb-tab${name === ribbonTab && (view.toolbar || ribbonPeek) ? ".active" : ""}`, {
+    type: "button", role: "tab", "aria-selected": String(name === ribbonTab),
+    onclick: () => selectRibbonTab(name),
+  }, name)));
+}
+
+function selectRibbonTab(name) {
+  if (name === "File") { backstage.show(); return; }
+  if (!view.toolbar) ribbonPeek = !(ribbonPeek && ribbonTab === name);
+  ribbonTab = name;
+  void browser.storage.local.set({ "writer.ribbon": name }).catch(() => {});
+  renderToolbar();
+}
+
+/** A colour button: the icon with the current colour as a bar under it, and an arrow for the palette. */
+function colorButton(name, title, colour, open, current) {
+  const swatch = h("span.rb-swatch", { style: { background: colour } });
+  const caret = icon("w-keyboard_arrow_down", { size: 14 });
+  caret.classList.add("rb-caret");
+  const button = h("button.rb-ico.rb-color", { type: "button", title, "aria-haspopup": "menu", onclick: () => open(button) }, icon(`w-${name}`, { size: 20 }), swatch, caret);
+  if (current) ribbonUpdaters.push((state) => { swatch.style.background = current(state); });
+  return button;
+}
+
+/** A labelled number field with steppers, for a paragraph property in cm. */
+function spinField(label, prop, unit) {
+  const input = h("input", { type: "text", "aria-label": label });
+  const value = () => toCm(editor?.formatting().paragraph[prop]) ?? 0;
+  const commit = (cm) => {
+    const v = Math.round(Math.max(prop.startsWith("margin-") && !/left|right/.test(prop) ? 0 : -20, Math.min(50, cm)) * 100) / 100;
+    paragraphStyle({ [prop]: v ? `${v}${unit}` : null });
+  };
+  input.addEventListener("change", () => { const n = Number.parseFloat(input.value.replace(",", ".")); if (Number.isFinite(n)) commit(n); else update(); });
+  input.addEventListener("keydown", (event) => { if (event.key === "Enter") { event.preventDefault(); input.blur(); } });
+  const update = () => { if (document.activeElement !== input) input.value = `${Math.round(value() * 100) / 100} ${unit}`; };
+  ribbonUpdaters.push(update);
+  const step = (d) => h("button", { type: "button", tabindex: "-1", onclick: () => commit(value() + d) }, icon(d > 0 ? "w-keyboard_arrow_up" : "w-keyboard_arrow_down", { size: 12 }));
+  return h("span.rb-field", {}, h("label", {}, label), h("span.rb-spin", {}, input, h("span.rb-steps", {}, step(0.1), step(-0.1))));
+}
+
+const toCm = (value) => {
+  const m = /^(-?\d+(?:\.\d+)?)(pt|cm|mm|in)$/.exec(String(value ?? ""));
+  return m ? Number(m[1]) * { cm: 1, mm: 0.1, in: 2.54, pt: 2.54 / 72 }[m[2]] : null;
+};
+
+// Home ------------------------------------------------------------------------
+
+async function clipboard(action) {
+  if (!editor) return;
+  editor.focus();
+  if (action === "paste") {
+    const text = await navigator.clipboard.readText().catch(() => null);
+    if (text === null) { toast("The clipboard could not be read"); return; }
+    if (editor.view.pasteText) editor.view.pasteText(text); else editor.view.dispatch(editor.view.state.tr.insertText(text));
+    return;
+  }
+  const { selection } = editor.where();
+  if (!selection) { toast("Select some text first"); return; }
+  await navigator.clipboard.writeText(selection);
+  if (action === "cut") editor.view.dispatch(editor.view.state.tr.deleteSelection());
+}
+
+/** Copy formatting: pick up the marks at the cursor; the next selection gets them (Esc cancels). */
+function formatPainter() {
+  if (!editor) return;
+  if (painter) { painter = null; ui.page.classList.remove("painting"); updateRibbon(); return; }
+  const { $from } = editor.view.state.selection;
+  painter = [...(editor.view.state.storedMarks ?? $from.marks())].filter((m) => !["link", "comment", "insertion", "deletion"].includes(m.type.name));
+  ui.page.classList.add("painting");
+  updateRibbon();
+}
+ui.editorRoot.addEventListener("mouseup", () => setTimeout(() => {
+  if (!painter || !editor) return;
+  const { from, to, empty } = editor.view.state.selection;
+  if (empty) return;
+  const tr = editor.view.state.tr;
+  for (const type of Object.values(editor.view.state.schema.marks)) if (!["link", "comment", "insertion", "deletion"].includes(type.name)) tr.removeMark(from, to, type);
+  for (const mark of painter) tr.addMark(from, to, mark);
+  editor.view.dispatch(tr);
+  painter = null;
+  ui.page.classList.remove("painting");
+  updateRibbon();
+}));
+
+/** The selection covers the whole text: type changes go to the document's defaults, not to every word. */
+function coversAll() {
+  const { from, to, empty } = editor.view.state.selection;
+  if (empty) return false;
+  let first = null;
+  let last = null;
+  editor.view.state.doc.descendants((node, pos) => {
+    if (!node.isTextblock) return true;
+    if (node.content.size) { first ??= pos + 1; last = pos + 1 + node.content.size; }
+    return false;
+  });
+  return first !== null && from <= first && to >= last;
+}
+
+const documentSize = () => Number.parseFloat(String(pdfSettings(editor?.settings()).fontsize ?? `${DEFAULT_SIZE}pt`)) || DEFAULT_SIZE;
+const currentSize = () => {
+  const own = Number.parseFloat(editor?.formatting().text["font-size"] ?? "");
+  return Number.isFinite(own) ? own : documentSize();
+};
+
+function setFontSize(size) {
+  if (!editable()) return;
+  if (coversAll()) { setLayoutKeys({ fontsize: `${size}pt` }); editor.setTextStyle({ "font-size": null }); return; }
+  textStyle({ "font-size": size === documentSize() ? null : `${size}pt` });
+}
+function stepFontSize(step) {
+  const now = currentSize();
+  setFontSize(step > 0 ? FONT_SIZES.find((v) => v > now + 0.001) ?? FONT_SIZES.at(-1) : FONT_SIZES.findLast((v) => v < now - 0.001) ?? FONT_SIZES[0]);
+}
+
+async function chooseFont(anchor) {
+  const { fonts = [] } = await host("/v1/slides/fonts").catch(() => ({ fonts: [] }));
+  if (!fonts.length) { toast("No fonts found on this system"); return; }
+  const font = await pick({ title: "Font", items: [DEFAULT_FONT, ...fonts.filter((f) => f !== DEFAULT_FONT)], describe: (f) => [f, ""], empty: "No match" });
+  if (!font || !editable()) return;
+  const base = pdfSettings(editor.settings()).mainfont ? String(pdfSettings(editor.settings()).mainfont) : DEFAULT_FONT;
+  if (coversAll()) { setLayoutKeys({ mainfont: font === DEFAULT_FONT ? null : font }); editor.setTextStyle({ "font-family": null }); return; }
+  textStyle({ "font-family": font === base ? null : font });
+  void anchor;
+}
+
+/** Character formatting of the selection (font, size, colours), kept as a span's style. */
+function textStyle(changes) {
+  if (!editable()) return;
+  editor.setTextStyle(changes);
+  editor.focus();
+  scheduleRibbon();
+}
+
+function setHighlight(colour) {
+  if (!editable()) return;
+  const has = editor.formatting().marks.has("highlight");
+  if (colour === "#FFFF00") { if (!has) runCommand("highlight"); textStyle({ "background-color": null }); return; }
+  if (has) runCommand("highlight");
+  textStyle({ "background-color": colour });
+}
+
+function clearStyle() {
+  if (!editable()) return;
+  runCommand("clear");
+  editor.setParagraphStyle(Object.fromEntries(["text-align", "margin-left", "margin-right", "text-indent", "margin-top", "margin-bottom", "line-height"].map((p) => [p, null])));
+  scheduleRibbon();
+}
+
+/** Paragraph formatting of the paragraphs the selection touches. */
+function paragraphStyle(changes) {
+  if (!editable()) return;
+  editor.setParagraphStyle(changes);
+  editor.focus();
+  scheduleRibbon();
+  rulers.schedule();
+}
+function align(side) { paragraphStyle({ "text-align": side === "left" ? null : side }); }
+function setLineSpacing(value) {
+  if (coversAll()) { setLayoutKeys({ linestretch: value === 1 ? null : value }); editor.setParagraphStyle({ "line-height": null }); return; }
+  paragraphStyle({ "line-height": value === Number(pdfSettings(editor.settings()).linestretch ?? 1) ? null : String(value) });
+}
+/** Increase or decrease indent: a list item moves a level, a paragraph by 1.25 cm. */
+function indent(step) {
+  if (!editable()) return;
+  const block = editor.formatting().block;
+  if (block === "bullet" || block === "ordered") { runCommand(step > 0 ? "indent" : "outdent"); return; }
+  const now = toCm(editor.formatting().paragraph["margin-left"]) ?? 0;
+  const next = Math.max(0, Math.round((now + step * INDENT_STEP) * 100) / 100);
+  paragraphStyle({ "margin-left": next ? `${next}cm` : null });
+}
+
+function selectAll() {
+  if (!editor) return;
+  editor.focus();
+  editor.selectRange(0, editor.view.state.doc.content.size);
+}
+
+/** Change the case of the selected text, keeping its formatting (text pieces are changed one by one). */
+function changeCase(mode) {
+  if (!editable()) return;
+  const { from, to, empty } = editor.view.state.selection;
+  if (empty) { toast("Select the text first"); return; }
+  const tr = editor.view.state.tr;
+  let sentenceStart = true;
+  let wordStart = true;
+  editor.view.state.doc.nodesBetween(from, to, (node, pos) => {
+    if (!node.isText) return true;
+    const start = Math.max(from, pos);
+    const end = Math.min(to, pos + node.nodeSize);
+    const text = node.text.slice(start - pos, end - pos);
+    let out = "";
+    for (const ch of text) {
+      const lower = ch.toLowerCase();
+      const upper = ch.toUpperCase();
+      if (mode === "lower") out += lower;
+      else if (mode === "upper") out += upper;
+      else if (mode === "toggle") out += ch === lower ? upper : lower;
+      else if (mode === "title") out += wordStart ? upper : lower;
+      else out += sentenceStart && /\p{L}/u.test(ch) ? upper : lower;
+      if (/\p{L}/u.test(ch)) sentenceStart = false;
+      if (/[.!?]/.test(ch)) sentenceStart = true;
+      wordStart = /[\s\-–—(]/.test(ch);
+    }
+    if (out !== text) tr.insertText(out, tr.mapping.map(start), tr.mapping.map(end));
+    return false;
+  });
+  if (tr.docChanged) editor.view.dispatch(tr);
 }
 
 // Layout ----------------------------------------------------------------------
@@ -555,19 +898,33 @@ function renderActions() {
 // them (src/workspace/writer.mjs). The Writer's own options live under `writer-options:`.
 
 function setSettings(changes) {
-  if (!editor || doc.status === "readonly") return;
-  if (!editor.setSettings(changes)) { toast("The document settings do not parse; fix them first (File → Document settings)"); return; }
+  if (!editable()) return false;
+  if (!editor.setSettings(changes)) { toast("The document header does not parse; fix it first (File → Info → Document header)"); return false; }
   renderToolbar();
-  pages.refresh();
-  lines.schedule();
+  syncDocumentView();
   syncTracking();
+  return true;
+}
+
+/** Set layout keys where the header keeps them (at the top, or under format: pdf:). */
+function setLayoutKeys(changes) {
+  const settings = editor.settings();
+  return setSettings(Object.fromEntries(Object.entries(changes).map(([key, value]) => [layoutKey(settings, key), value])));
+}
+
+/** The page follows the document's settings: its layout, its line numbers. */
+function syncDocumentView() {
+  if (!editor) return;
+  pages.refresh();
+  lines.set(lineNumbering(editor.settings()));
+  rulers.schedule();
 }
 
 /** The layout as the ribbon shows it: { paper, landscape, margin, columns }. */
 function layoutSettings(settings) {
   const geometry = [].concat(settings.geometry ?? []).map(String);
   const options = [].concat(settings.classoption ?? []).map(String);
-  const margin = geometry.find((g) => /^margin=/.test(g))?.slice(7) ?? (geometry.length ? "custom" : "");
+  const margin = geometry.find((g) => /^margin=/.test(g))?.slice(7) ?? (geometry.some((g) => /^(top|bottom|left|right)=/.test(g)) ? "custom" : "");
   return {
     paper: /letter/i.test(String(settings.papersize ?? "")) ? "letter" : settings.papersize ? "a4" : "",
     landscape: geometry.includes("landscape"),
@@ -576,13 +933,19 @@ function layoutSettings(settings) {
   };
 }
 
-function setLayout({ paper, landscape, margin, columns }) {
-  const settings = editor.settings();
+function setLayout({ paper, landscape, margin, margins, columns }) {
+  const settings = pdfSettings(editor.settings());
   const changes = {};
   if (paper) changes.papersize = paper;
-  if (landscape !== undefined || margin) {
+  if (landscape !== undefined || margin || margins) {
     let geometry = [].concat(settings.geometry ?? []).map(String).filter((g) => g !== "landscape");
     if (margin) geometry = [...geometry.filter((g) => !/^(margin|top|bottom|left|right)=/.test(g)), `margin=${margin}`];
+    if (margins) {
+      const now = layoutOf(settings).margins ?? { top: 2.5, right: 2.5, bottom: 2.5, left: 2.5 };
+      const next = { ...now, ...margins };
+      const round = (v) => `${Math.round(v * 100) / 100}cm`;
+      geometry = [...geometry.filter((g) => !/^(margin|top|bottom|left|right)=/.test(g)), ...["top", "bottom", "left", "right"].map((side) => `${side}=${round(next[side])}`)];
+    }
     if (landscape ?? settings.geometry?.includes?.("landscape")) geometry.push("landscape");
     changes.geometry = geometry.length ? geometry : null;
   }
@@ -591,21 +954,26 @@ function setLayout({ paper, landscape, margin, columns }) {
     if (columns === 2) options.push("twocolumn");
     changes.classoption = options.length ? options : null;
   }
-  setSettings(changes);
+  setLayoutKeys(changes);
 }
 
 async function customMargins() {
-  const value = await ask({ title: "Margins", message: "One length for all sides, e.g. 2.2cm, 25mm or 1in", value: layoutSettings(editor.settings()).margin || "2.5cm", ok: "Apply" });
+  const now = layoutOf(editor.settings()).margins ?? { top: 2.5, right: 2.5, bottom: 2.5, left: 2.5 };
+  const value = await ask({ title: "Custom margins", message: "Top, bottom, left and right in cm", value: [now.top, now.bottom, now.left, now.right].join(", "), ok: "Apply" });
   if (!value) return;
-  if (!/^\d+(\.\d+)?\s*(cm|mm|in|pt)$/.test(value.trim())) { toast("Give a length like 2.5cm, 20mm or 1in"); return; }
-  setLayout({ margin: value.replace(/\s+/g, "") });
+  const parts = value.split(/[,;\s]+/).filter(Boolean).map(Number);
+  if (parts.some((n) => !Number.isFinite(n) || n < 0 || n > 10)) { toast("Give four lengths in cm, like 2.5, 2.5, 3, 2"); return; }
+  const [top, bottom = top, left = top, right = left] = parts;
+  setLayout({ margins: { top, bottom, left, right } });
 }
 
-async function chooseFont() {
-  const { fonts = [] } = await host("/v1/slides/fonts").catch(() => ({ fonts: [] }));
-  if (!fonts.length) { toast("No fonts found on this system"); return; }
-  const font = await pick({ title: "Font of the document", items: fonts, describe: (f) => [f, ""], empty: "No match" });
-  if (font) setSettings({ mainfont: font });
+/** Line numbers, as the document asks for them: none, continuous, or from 1 on each page. */
+function lineNumbering(settings) {
+  const value = settings["writer-options"]?.["line-numbers"];
+  return value === true || value === "continuous" ? "continuous" : value === "page" ? "page" : "none";
+}
+function setLineNumbering(mode) {
+  setSettings({ "writer-options.line-numbers": mode === "none" ? null : mode === "page" ? "page" : true });
 }
 
 async function chooseBibliography() {
@@ -617,45 +985,94 @@ async function chooseBibliography() {
   await loadBibliography();
 }
 
-function editHeader() {
-  if (!editor) return;
-  if (!editor.settings() || !doc.root.querySelector(".qb-frontmatter")) setSettings({ title: nameOf(doc.path).replace(/\.[^.]+$/, "") });
-  const block = doc.root.querySelector(".qb-frontmatter");
-  block?.scrollIntoView({ block: "start" });
-  block?.click();
+function insertTable(rows, cols) {
+  if (!editable()) return;
+  runCommand("table", { row: rows, col: cols });
+}
+async function insertCustomTable() {
+  const value = await ask({ title: "Insert table", message: "Columns × rows", value: "3 × 3", ok: "Insert" });
+  const m = /^(\d+)\s*[x×*,\s]\s*(\d+)$/.exec(value ?? "");
+  if (m) insertTable(Number(m[2]), Number(m[1]));
+}
+
+async function insertDate() {
+  if (!editable()) return;
+  const now = new Date();
+  const formats = [now.toLocaleDateString(), now.toISOString().slice(0, 10), now.toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" }), now.toLocaleString()];
+  const text = await pick({ title: "Date & Time", items: formats, describe: (f) => [f, ""], empty: "" });
+  if (text) { editor.view.dispatch(editor.view.state.tr.insertText(text).scrollIntoView()); editor.focus(); }
+}
+
+async function addBookmark() {
+  if (!editable()) return;
+  const { $from } = editor.view.state.selection;
+  if ($from.parent.type.name !== "heading") { toast("Put the cursor in a heading: its name lets you refer to it (References → Cross-reference)"); return; }
+  const name = await ask({ title: "Bookmark", message: "A name for this heading, used to refer to it as @sec-…", value: "sec-", ok: "Add" });
+  if (!name) return;
+  const id = name.startsWith("sec-") ? name : `sec-${name}`;
+  if (!/^sec-[\w-]+$/.test(id)) { toast("Use letters, digits and dashes"); return; }
+  editor.view.dispatch(editor.view.state.tr.insertText(` {#${id}}`, $from.end()));
+}
+
+function gotoFootnote(step) {
+  const refs = [...(doc.root?.querySelectorAll('sup[data-type="footnote_reference"]') ?? [])];
+  if (!refs.length) { toast("No footnotes"); return; }
+  const top = ui.scroll.getBoundingClientRect().top + 40;
+  const target = step > 0 ? refs.find((r) => r.getBoundingClientRect().top > top + 2) ?? refs[0] : [...refs].reverse().find((r) => r.getBoundingClientRect().top < top - 2) ?? refs.at(-1);
+  target.scrollIntoView({ block: "center" });
 }
 
 // View ------------------------------------------------------------------------
 
-const ZOOMS = [0.5, 0.67, 0.75, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2];
-const stepZoom = (step) => {
-  const at = ZOOMS.findIndex((z) => z >= zoom - 0.001);
-  return ZOOMS[Math.min(ZOOMS.length - 1, Math.max(0, (at < 0 ? ZOOMS.length - 1 : at) + step))];
-};
+const ZOOMS = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
+const stepZoom = (step) => (step > 0 ? ZOOMS.find((z) => z > zoom + 0.001) ?? ZOOMS.at(-1) : ZOOMS.findLast((z) => z < zoom - 0.001) ?? ZOOMS[0]);
 
 function setZoom(value) {
-  zoom = Math.min(2, Math.max(0.5, Number(value) || 1));
+  zoom = Math.min(5, Math.max(0.5, Number(value) || 1));
   ui.page.style.zoom = String(zoom);
-  ui.zoom.textContent = `${Math.round(zoom * 100)}%`;
   void browser.storage.local.set({ "writer.zoom": zoom }).catch(() => {});
-  if (ribbonTab === "View") renderToolbar();
+  renderStatusBar();
+  if (ribbonTab === "View") updateRibbon();
   lines.schedule();
+  rulers.schedule();
   drawFrames();
 }
 
-async function setPageView(on) {
-  pages.set(on);
-  lines.schedule();
-  drawFrames();
-  updateWhere();
-  await browser.storage.local.set({ "writer.pageView": Boolean(on) }).catch(() => {});
-  updateRibbon();
+function fit(kind) {
+  const g = pages.geometry;
+  const box = ui.scroll.getBoundingClientRect();
+  const width = (box.width - 40) / g.width;
+  const height = (box.height - 48) / g.height;
+  setZoom(Math.round((kind === "page" ? Math.min(width, height) : width) * 100) / 100);
 }
 
-async function setLineNumbers(on) {
-  lines.set(on);
-  await browser.storage.local.set({ "writer.lineNumbers": Boolean(on) }).catch(() => {});
-  updateRibbon();
+/** Show or hide parts of the window (View): rulers, status bar, side bars, the ribbon, formatting marks. */
+function setView(changes) {
+  Object.assign(view, changes);
+  void browser.storage.local.set({ "writer.view": view }).catch(() => {});
+  if ("toolbar" in changes) ribbonPeek = false;
+  applyView();
+  renderToolbar();
+}
+function applyView() {
+  const showing = !ui.page.hidden;
+  ui.workspace.classList.toggle("no-rulers", !view.rulers || !showing);
+  for (const el of [ui.hruler, ui.vruler, ui.corner]) el.hidden = !view.rulers || !showing;
+  ui.statusbar.hidden = !view.statusBar || !showing;
+  ui.leftbar.hidden = !view.leftPanel || !showing;
+  ui.leftpanel.hidden = !view.leftPanel || !showing || !leftOpen;
+  ui.rightbar.hidden = !view.rightPanel || !showing;
+  ui.rightpanel.hidden = !view.rightPanel || !showing || !rightOpen;
+  ui.page.classList.toggle("show-marks", view.marks);
+  rulers.schedule();
+  lines.schedule();
+}
+
+/** The window's chrome around a document (hidden on the start page). */
+function showChrome(on) {
+  ui.header.hidden = !on;
+  ui.toolbar.hidden = !on;
+  applyView();
 }
 
 function setLanguage(language) {
@@ -664,18 +1081,16 @@ function setLanguage(language) {
   void browser.storage.local.set({ "writer.language": language }).catch(() => {});
   grammarCache.clear();
   if (grammarOn) scheduleGrammar(50);
-  if (ribbonTab === "Review") renderToolbar();
 }
 
-const find = createFind({ mount: ui.body, getEditor: () => editor, onReplace: () => scheduleGrammar() });
-const lines = createLineNumbers({ page: ui.page, getRoot: () => doc.root, getZoom: () => zoom });
+const find = createFind({ mount: ui.workspace, getEditor: () => editor, onReplace: () => scheduleGrammar() });
+
 // Review ----------------------------------------------------------------------
 //
 // Track changes is a document setting (writer-options.track-changes), so it holds for everyone who
 // edits the file here; the author's name is this user's, asked once. Changes and comments are kept
 // in Pandoc's form, which the Word export turns into Word's own.
 
-const DISPLAYS = [["markup", "Markup", "changes in colour"], ["final", "Final", "as if every change were accepted"], ["original", "Original", "as before the changes"]];
 const isTracking = () => Boolean(editor?.tracking.on);
 
 async function ensureAuthor() {
@@ -692,12 +1107,11 @@ function syncTracking() {
   if (!editor) return;
   const on = editor.settings()["writer-options"]?.["track-changes"] === true;
   if (on !== isTracking() || editor.tracking.author !== author) editor.setTracking(on, author || "Unknown");
-  ui.trackState.hidden = !on;
   updateRibbon();
 }
 
 async function setTracking(on) {
-  if (!editor || doc.status === "readonly") return;
+  if (!editable()) return;
   if (on && !(await ensureAuthor())) return;
   setSettings({ "writer-options.track-changes": on ? true : null });
   syncTracking();
@@ -737,15 +1151,27 @@ function resolveAll(accept) {
   review.schedule();
 }
 
+/** Delete (or resolve: the same here, the text stays) the comment at the cursor, or all comments. */
+function removeComment(all) {
+  if (!editable()) return;
+  const comments = editor.comments();
+  const { from } = editor.view.state.selection;
+  const targets = all ? comments : comments.filter((c) => from >= c.from && from <= c.to);
+  if (!targets.length) { toast(all ? "No comments" : "Put the cursor in a commented passage"); return; }
+  for (const c of targets) editor.updateComment(c.id, null);
+  review.schedule();
+  renderSidebars();
+}
+
 async function newComment() {
-  if (!editor || doc.status === "readonly") return;
+  if (!editable()) return;
   const { from, to, empty } = editor.view.state.selection;
   if (empty) { toast("Select the text to comment on"); return; }
   if (!(await ensureAuthor())) return;
   const text = await ask({ title: "Comment", value: "", placeholder: "Your comment", ok: "Comment" });
   if (!text) return;
   editor.addComment(from, to, text, author);
-  review.set(true);
+  setLeft("comments");
   updateRibbon();
 }
 
@@ -756,9 +1182,219 @@ async function asAgent(fn, who = "Claude") {
   try { return await fn(); } finally { editor.setTracking(true, author || "Unknown"); }
 }
 
-const review = createReviewPanel({ mount: ui.body, getEditor: () => editor, getDocName: () => nameOf(doc.path ?? ""), onChange: () => { review.schedule(); scheduleRibbon(); }, authorHue });
+// ------------------------------------------------- side bars and panels --
+//
+// Left: Find, Comments, Headings (navigation), Info. Right: Paragraph settings.
 
-const pages = createPageView({ page: ui.page, getRoot: () => doc.root, getZoom: () => zoom, getLayout: () => (editor ? layoutOf(editor.settings()) : {}), paperSize, onDraw: () => updateWhere() });
+const review = createReviewPanel({ mount: ui.leftpanel, getEditor: () => editor, getDocName: () => nameOf(doc.path ?? ""), onChange: () => { review.schedule(); scheduleRibbon(); renderSidebars(); }, onClose: () => setLeft(null), authorHue });
+
+function setLeft(name) {
+  leftOpen = name;
+  if (name && !view.leftPanel) { view.leftPanel = true; void browser.storage.local.set({ "writer.view": view }).catch(() => {}); }
+  review.set(name === "comments");
+  ui.outline.hidden = name !== "outline";
+  renderOutline();
+  renderSidebars();
+  applyView();
+  if (ribbonTab === "View") updateRibbon();
+}
+
+function setRight(name) {
+  rightOpen = name;
+  if (name && !view.rightPanel) { view.rightPanel = true; void browser.storage.local.set({ "writer.view": view }).catch(() => {}); }
+  renderRightPanel();
+  renderSidebars();
+  applyView();
+}
+
+function renderSidebars() {
+  const side = (name, title, pressed, onclick, extra) => h("button", { type: "button", title, "aria-label": title, "aria-pressed": String(Boolean(pressed)), onclick }, icon(`w-${name}`, { size: 22 }), extra ?? null);
+  const comments = editor?.comments().length ?? 0;
+  ui.leftbar.replaceChildren(
+    side("search", "Find (Ctrl+F)", false, () => find.open()),
+    side("chat_bubble", "Comments", leftOpen === "comments", () => setLeft(leftOpen === "comments" ? null : "comments"), comments ? h("span.dot") : null),
+    side("toc", "Headings", leftOpen === "outline", () => setLeft(leftOpen === "outline" ? null : "outline")),
+    side("info", "Document info", false, () => backstage.show("info")),
+  );
+  ui.rightbar.replaceChildren(side("format_paragraph", "Paragraph settings", rightOpen === "paragraph", () => setRight(rightOpen === "paragraph" ? null : "paragraph")));
+}
+
+/** Paragraph settings, as ONLYOFFICE's right panel shows them: line spacing, spacing, indents. */
+function renderRightPanel() {
+  if (rightOpen !== "paragraph" || !editor) { ui.rightpanel.replaceChildren(); return; }
+  const p = editor.formatting().paragraph;
+  const cm = (prop) => String(Math.round((toCm(p[prop]) ?? 0) * 100) / 100);
+  const number = (prop, label, min = 0) => {
+    const input = h("input", { type: "number", step: "0.1", min: String(min), value: cm(prop) });
+    input.addEventListener("change", () => { const v = Number(input.value); paragraphStyle({ [prop]: v ? `${v}cm` : null }); });
+    return h("label", {}, label, input);
+  };
+  const spacing = h("select", {}, ...SPACINGS.map((v) => h("option", { value: String(v), selected: Math.abs(Number(p["line-height"] ?? 1) - v) < 0.001 }, v === 1 ? "Single (1.0)" : `Multiple ${v}`)));
+  spacing.addEventListener("change", () => setLineSpacing(Number(spacing.value)));
+  const special = h("select", {}, h("option", { value: "none" }, "(none)"), h("option", { value: "first", selected: (toCm(p["text-indent"]) ?? 0) > 0 }, "First line"), h("option", { value: "hanging", selected: (toCm(p["text-indent"]) ?? 0) < 0 }, "Hanging"));
+  const by = h("input", { type: "number", step: "0.1", min: "0", value: String(Math.abs(toCm(p["text-indent"]) ?? 0)) });
+  // Word's hanging indent keeps the first line where it was and moves the others in.
+  const applySpecial = () => {
+    const v = Number(by.value) || 0;
+    const left = toCm(p["margin-left"]) ?? 0;
+    const hanging = special.value === "hanging" && v;
+    paragraphStyle({ "text-indent": special.value === "none" || !v ? null : `${hanging ? -v : v}cm`, ...(hanging && left < v ? { "margin-left": `${v}cm` } : {}) });
+  };
+  special.addEventListener("change", () => { if (special.value !== "none" && !Number(by.value)) by.value = "1.25"; applySpecial(); });
+  by.addEventListener("change", applySpecial);
+  ui.rightpanel.replaceChildren(
+    h("div.wp-panel-head", {}, "Paragraph settings", h("span.spacer"), h("button", { type: "button", title: "Close", onclick: () => setRight(null) }, icon("w-close", { size: 18 }))),
+    h("div.ps", {},
+      h("h3", {}, "Line spacing"), h("label", {}, "Spacing", spacing),
+      h("h3", {}, "Paragraph spacing"), h("div.ps-row", {}, number("margin-top", "Before (cm)"), number("margin-bottom", "After (cm)")),
+      h("h3", {}, "Indents"), h("div.ps-row", {}, number("margin-left", "Left (cm)", -20), number("margin-right", "Right (cm)", -20)),
+      h("div.ps-row", {}, h("label", {}, "Special", special), h("label", {}, "By (cm)", by)),
+      h("p.ps-note", {}, "Applies to the paragraphs the cursor or selection is in. The PDF and the Word file keep it.")));
+}
+
+// ---------------------------------------------------------- the rulers --
+
+const pages = createPageView({ page: ui.page, getEditor: () => editor, getZoom: () => zoom, getLayout: () => (editor ? layoutOf(editor.settings()) : {}), paperSize, onDraw: () => { updateWhere(); rulers.schedule(); lines.schedule(); } });
+const lines = createLineNumbers({ page: ui.page, getRoot: () => doc.root, getZoom: () => zoom, getLeft: () => pages.geometry.left, getPitch: () => pages.pitch });
+
+/** The sheet the vertical ruler follows: the cursor's, when it is in view; else the one in the middle of the view. */
+function currentSheetTop() {
+  const box = ui.scroll.getBoundingClientRect();
+  let y = box.top + box.height / 2;
+  try {
+    const caret = editor.view.coordsAtPos(editor.view.state.selection.from).top;
+    if (caret > box.top && caret < box.bottom) y = caret;
+  } catch { /* not laid out yet */ }
+  const at = pages.pageAt(y);
+  return pages.sheetTop(at.page);
+}
+
+/** The indents of the paragraph at the cursor, in cm, for the ruler's markers. */
+function rulerParagraph() {
+  if (!editor || doc.status === "readonly") return null;
+  const p = editor.formatting().paragraph;
+  return { left: toCm(p["margin-left"]) ?? 0, right: toCm(p["margin-right"]) ?? 0, firstLine: toCm(p["text-indent"]) ?? 0 };
+}
+
+const rulers = createRulers({
+  hruler: ui.hruler, vruler: ui.vruler, page: ui.page, scroll: ui.scroll,
+  getGeometry: () => pages.geometry, getZoom: () => zoom, getSheetTop: currentSheetTop, getParagraph: rulerParagraph,
+  onMargins: (margins) => setLayout({ margins }),
+  onIndents: ({ left, right, firstLine }) => {
+    const v = (n) => (n ? `${Math.round(n * 100) / 100}cm` : null);
+    paragraphStyle({ ...(left !== undefined ? { "margin-left": v(Math.max(0, left)) } : {}), ...(right !== undefined ? { "margin-right": v(right) } : {}), ...(firstLine !== undefined ? { "text-indent": v(firstLine) } : {}) });
+  },
+});
+
+// ---------------------------------------------------------- status bar --
+//
+// As ONLYOFFICE's: Page 1 of 10, Word count, a message, the language, spell checking and track
+// changes, fit to page and to width, zoom out, the zoom, zoom in.
+
+function renderStatusBar() {
+  const ico = (name, title, onclick, pressed) => h("button.sb-ico", { type: "button", title, "aria-label": title, onclick, ...(pressed !== undefined ? { "aria-pressed": String(Boolean(pressed)) } : {}) }, icon(`w-${name}`, { size: 20 }));
+  ui.sbToggles.replaceChildren(
+    ico("spellcheck", "Spell checking", toggleGrammar, grammarOn),
+    ico("track_changes", "Track changes", () => void setTracking(!isTracking()), isTracking()),
+  );
+  ui.sbView.replaceChildren(ico("fit_page", "Fit to page", () => fit("page")), ico("fit_width", "Fit to width", () => fit("width")));
+  const label = h("button.sb-zoom-label", { type: "button", title: "Zoom", onclick: () => dropdown(label, ZOOMS.map((z) => ({ label: `${Math.round(z * 100)}%`, checked: Math.abs(z - zoom) < 0.001, run: () => setZoom(z) }))) }, `Zoom ${Math.round(zoom * 100)}%`);
+  ui.sbZoom.replaceChildren(ico("remove", "Zoom out (Ctrl+-)", () => setZoom(stepZoom(-1))), label, ico("add", "Zoom in (Ctrl++)", () => setZoom(stepZoom(1))));
+  ui.words.replaceChildren(icon("w-short_text", { size: 18 }), "Word count");
+}
+function updateStatusToggles() {
+  const [spell, trackButton] = ui.sbToggles.children;
+  spell?.setAttribute("aria-pressed", String(grammarOn));
+  trackButton?.setAttribute("aria-pressed", String(isTracking()));
+}
+function renderActions() { updateStatusToggles(); if (ribbonTab === "Collaboration") updateRibbon(); }
+
+function showWordCount() {
+  if (!editor) return;
+  const text = editor.view.state.doc.textContent;
+  const { selection } = editor.where();
+  const words = (t) => t.split(/\s+/).filter(Boolean).length;
+  let paragraphs = 0;
+  editor.view.state.doc.descendants((node) => { if (node.isTextblock && node.content.size) paragraphs++; return !node.isTextblock; });
+  const rows = [["Pages", String(pages.count)], ["Words", words(text).toLocaleString()], ["Characters without spaces", text.replace(/\s/g, "").length.toLocaleString()], ["Characters with spaces", text.length.toLocaleString()], ["Paragraphs", String(paragraphs)], ...(selection ? [["Selected words", words(selection).toLocaleString()]] : [])];
+  const backdrop = h("div.dialog-backdrop", { onclick: (e) => { if (e.target === backdrop) backdrop.remove(); } },
+    h("div.dialog", { style: { width: "min(380px, calc(100vw - 32px))" } }, h("h2", {}, "Word count"),
+      h("div", { style: { display: "grid", gridTemplateColumns: "1fr auto", gap: "8px 24px", fontSize: "13.5px" } }, ...rows.flatMap(([k, v]) => [h("span", {}, k), h("strong", {}, v)])),
+      h("div.actions", {}, h("button.btn.primary", { type: "button", onclick: () => backdrop.remove() }, "Close"))));
+  document.body.append(backdrop);
+}
+ui.words.addEventListener("click", showWordCount);
+
+// ------------------------------------------------------------ File --
+
+const backstage = createBackstage({
+  mount: ui.backstage,
+  actions: {
+    createNew: () => void newDocument(),
+    open: () => void openDialog(),
+    openPath: (path) => void open(path),
+    recent,
+    save: () => void tabs.save(),
+    download: (format) => void exportAs(format),
+    saveCopy: () => void saveCopy(),
+    print: () => void exportAs("pdf"),
+    close: () => { if (doc.path) void tabs.close(doc); },
+    isQuarto,
+    info: () => documentInfo(),
+    setInfo: (changes) => {
+      const settings = editor.settings();
+      const out = {};
+      for (const [key, value] of Object.entries(changes)) out[key] = key === "author" && Array.isArray(settings.author) ? value.split(/\s*,\s*/).filter(Boolean) : value || null;
+      setSettings(out);
+    },
+    setHeader: (text) => {
+      if (!editable()) return false;
+      if (!editor.setHeader(text)) return false;
+      renderToolbar();
+      syncDocumentView();
+      syncTracking();
+      void loadBibliography();
+      return true;
+    },
+    prefs: () => ({ author, language: grammarLanguage, languages: LANGUAGES }),
+    setPrefs: ({ author: name, language }) => {
+      author = name;
+      void browser.storage.local.set({ "writer.author": author }).catch(() => {});
+      syncTracking();
+      setLanguage(language);
+    },
+  },
+});
+
+/** File → Info: the title block's fields (editable when they are plain text), the path, statistics, the header. */
+function documentInfo() {
+  const settings = editor?.settings() ?? {};
+  const fields = {};
+  for (const key of ["title", "subtitle", "author", "date", "abstract"]) {
+    const value = settings[key];
+    if (key === "author") {
+      const list = value === undefined ? [] : [].concat(value);
+      fields.author = { text: list.map((a) => (typeof a === "string" ? a : a?.name ?? "")).filter(Boolean).join(", "), plain: list.every((a) => typeof a === "string") };
+    } else fields[key] = { text: value === undefined || value === null ? "" : typeof value === "object" ? JSON.stringify(value) : String(value), plain: value === undefined || value === null || typeof value !== "object" };
+  }
+  const text = editor?.view.state.doc.textContent ?? "";
+  return {
+    fields,
+    path: doc.path ?? "",
+    stats: `${pages.count} page${pages.count === 1 ? "" : "s"}, ${text.split(/\s+/).filter(Boolean).length.toLocaleString()} words, ${text.length.toLocaleString()} characters`,
+    header: editor?.header() ?? "",
+  };
+}
+
+async function saveCopy() {
+  if (!doc.path) return;
+  const path = await ask({ title: "Save Copy As", message: "Where to save a copy (the open document stays as it is)", value: doc.path.replace(/(\.[^.]+)$/, " (copy)$1"), ok: "Save" });
+  if (!path) return;
+  try {
+    await host("/v1/fs/file", { method: "PUT", body: JSON.stringify({ path, text: editor.markdown(), expect: "absent", createDirs: true }) });
+    toast(`Saved a copy: ${nameOf(path)}`);
+  } catch (error) { toast(error.status === 409 ? "That file already exists" : error.message); }
+}
 
 // Insertions ------------------------------------------------------------------
 
@@ -914,26 +1550,20 @@ async function editChip(attrs) {
 let outlineTimer = null;
 function scheduleOutline() { clearTimeout(outlineTimer); outlineTimer = setTimeout(renderOutline, 400); }
 function renderOutline() {
-  ui.outline.hidden = !outlineOpen || !editor || !doc.path;
-  if (ui.outline.hidden) return;
+  if (leftOpen !== "outline" || !editor || !doc.path) return;
   const items = editor.outline();
   const { heading } = editor.where();
-  ui.outline.replaceChildren(h("h2", {}, "Outline"), ...(items.length ? items.map((item) => h(`button${heading && item.text === heading ? ".current" : ""}`, { type: "button", dataset: { level: item.level }, title: item.text, onclick: () => editor.reveal(item.pos) }, item.text || "(untitled)")) : [h("p", { style: { color: "var(--mw-text-3)", padding: "0 8px", fontSize: "13px" } }, "No headings yet")]));
+  ui.outline.replaceChildren(h("div.wp-panel-head", {}, "Headings", h("span.spacer"), h("button", { type: "button", title: "Close", onclick: () => setLeft(null) }, icon("w-close", { size: 18 }))),
+    ...(items.length ? items.map((item) => h(`button${heading && item.text === heading ? ".current" : ""}`, { type: "button", dataset: { level: item.level }, title: item.text, onclick: () => editor.reveal(item.pos) }, item.text || "(untitled)")) : [h("p.empty", {}, "No headings yet: use the Heading styles (Home) to build the outline.")]));
 }
 
 function updateWhere() {
   if (!editor || !doc.path) return;
-  const { heading, selection } = editor.where();
-  const count = selection ? selection.split(/\s+/).filter((w) => /\w/.test(w)).length : 0;
-  ui.where.textContent = count ? `${count} word${count === 1 ? "" : "s"} selected` : heading ? `In “${heading}”` : "";
-  const textContent = editor.view.state.doc.textContent;
-  const words = textContent.split(/\s+/).filter(Boolean).length;
-  ui.words.textContent = `${words.toLocaleString()} words`;
-  ui.words.title = `${textContent.replace(/\s/g, "").length.toLocaleString()} characters without spaces, ${textContent.length.toLocaleString()} with`;
   let at = null;
   try { at = pages.pageAt(editor.view.coordsAtPos(editor.view.state.selection.from).top); } catch { /* not laid out yet */ }
-  ui.pageCount.hidden = !at;
-  ui.pageCount.textContent = at ? `Page ${at.page} of ${at.pages}` : "";
+  ui.pageCount.textContent = `Page ${at?.page ?? 1} of ${at?.pages ?? pages.count}`;
+  if (leftOpen === "outline") scheduleOutline();
+  if (rightOpen === "paragraph" && !ui.rightpanel.contains(document.activeElement)) renderRightPanel();
 }
 
 // ------------------------------------------------------------- grammar --
@@ -1204,6 +1834,7 @@ addEventListener("keydown", (event) => {
   if (accel(event) && event.altKey && event.code === "KeyM") { event.preventDefault(); void newComment(); return; }
   if (event.key !== "Escape" || !editor) return;
   if (document.querySelector(".dialog-backdrop, .menu")) return;
+  if (painter) { painter = null; ui.page.classList.remove("painting"); updateRibbon(); return; }
   if (!editor.reviews().regions.length) return;
   event.preventDefault();
   editor.clearReviews();
@@ -1225,7 +1856,6 @@ async function exportAs(to) {
   // Quarto renders the file on disk: save first.
   if (doc.dirty || saving) { const result = await save(); if (!result.saved) return { ok: false, error: "The document could not be saved" }; }
   setStatus("rendering");
-  ui.render.disabled = true;
   try {
     const result = await host("/v1/writer/render", { method: "POST", body: JSON.stringify({ path: doc.path, to }) });
     setStatus("saved");
@@ -1238,7 +1868,7 @@ async function exportAs(to) {
     setStatus("error", error.message);
     toast(error.message);
     return { ok: false, error: error.message };
-  } finally { ui.render.disabled = false; }
+  }
 }
 
 function showRenderError(result) {
@@ -1249,25 +1879,20 @@ function showRenderError(result) {
       h("div.actions", {}, h("button.btn", { type: "button", onclick: () => { void background("chat-draft", { text: `Rendering ${nameOf(doc.path)} failed:\n\n${result.errors.join("\n") || result.log.slice(-1500)}\n\nCan you fix it?` }); backdrop.remove(); } }, "Ask the agent"), h("button.btn.primary", { type: "button", onclick: () => backdrop.remove() }, "Close"))));
   document.body.append(backdrop);
 }
-ui.render.addEventListener("click", () => void render());
 
 // ---------------------------------------------------------- start page --
 
 async function showStart() {
   ui.start.hidden = false;
   ui.page.hidden = true;
-  ui.toolbar.hidden = true;
-  ui.statusbar.hidden = true;
-  ui.render.hidden = true;
-  ui.outline.hidden = true;
+  showChrome(false);
+  backstage.hide();
   find.close();
-  ui.title.textContent = "Writer";
-  ui.subtitle.textContent = "";
+  ui.title.textContent = "";
   document.title = "Writer";
   hideBar();
   setStatus("idle", "", EMPTY);
   ui.state.hidden = true;
-  renderActions();
   const list = await recent();
   ui.start.replaceChildren(
     h("h2", {}, "Write a paper"),
@@ -1303,15 +1928,27 @@ addEventListener("keydown", (event) => {
 const KEYS = {
   f: () => find.open(),
   h: () => find.open({ replace: true }),
+  p: () => void exportAs("pdf"),
   u: () => editor.command("underline"),
   ".": () => editor.command("superscript"),
   ",": () => editor.command("subscript"),
-  " ": () => editor.command("clear"),
+  " ": () => clearStyle(),
+  l: () => align("left"),
+  e: () => align("center"),
+  r: () => align("right"),
+  j: () => align("justify"),
+  k: () => void insertLink(),
+  "]": () => stepFontSize(1),
+  "[": () => stepFontSize(-1),
 };
+const READ_ONLY_KEYS = new Set(["f", "h", "p"]);
 addEventListener("keydown", (event) => {
-  if (!editor || !doc.path || ui.page.hidden || !accel(event) || event.altKey || event.shiftKey) return;
+  if (!editor || !doc.path || ui.page.hidden || !accel(event) || event.altKey) return;
+  if (event.shiftKey && event.code === "KeyE") { event.preventDefault(); void setTracking(!isTracking()); return; }
+  if (event.shiftKey && event.code === "KeyC") { event.preventDefault(); formatPainter(); return; }
+  if (event.shiftKey) return;
   const action = KEYS[event.key.toLowerCase()];
-  if (!action || (event.key !== "f" && event.key !== "h" && doc.status === "readonly")) return;
+  if (!action || (!READ_ONLY_KEYS.has(event.key.toLowerCase()) && doc.status === "readonly")) return;
   event.preventDefault();
   event.stopPropagation();
   action();
@@ -1345,12 +1982,14 @@ registerPage("writer", {
     words: editor?.view.state.doc.textContent.split(/\s+/).filter(Boolean).length,
     grammar: grammarOn,
     grammarLanguage,
-    lineNumbers: lines.on,
-    pageView: pages.on,
+    lineNumbers: lines.mode,
+    pages: pages.count,
     trackChanges: isTracking(),
     changes: editor?.changes().length,
     comments: editor?.comments().length,
     zoom,
+    view: { ...view, leftPanelOpen: leftOpen, rightPanelOpen: rightOpen, ribbonTab },
+    formatting: editor ? { paragraph: editor.formatting().paragraph, text: editor.formatting().text, block: editor.formatting().block } : undefined,
     settings: editor?.settings(),
   } : { path: null },
   commands: {
@@ -1429,10 +2068,28 @@ registerPage("writer", {
       if (!editor || doc.status === "readonly") throw new Error("No editable document is open");
       if (text && !editor.selectText(String(text))) throw new Error("Text not found in the document");
       const wasClean = !doc.dirty;
-      editor.command(String(command), value);
+      const name = String(command);
+      const length = (v, unit) => (v === null || v === undefined || Number(v) === 0 ? null : `${Number(v)}${unit}`);
+      const paragraph = {
+        align: () => editor.setParagraphStyle({ "text-align": value === "left" || !value ? null : String(value) }),
+        "line-spacing": () => editor.setParagraphStyle({ "line-height": value ? String(value) : null }),
+        "space-before": () => editor.setParagraphStyle({ "margin-top": length(value, "pt") }),
+        "space-after": () => editor.setParagraphStyle({ "margin-bottom": length(value, "pt") }),
+        "indent-left": () => editor.setParagraphStyle({ "margin-left": length(value, "cm") }),
+        "indent-right": () => editor.setParagraphStyle({ "margin-right": length(value, "cm") }),
+        "first-line": () => editor.setParagraphStyle({ "text-indent": length(value, "cm") }),
+        font: () => editor.setTextStyle({ "font-family": value || null }),
+        size: () => editor.setTextStyle({ "font-size": length(value, "pt") }),
+        color: () => editor.setTextStyle({ color: value || null }),
+      };
+      if (paragraph[name]) paragraph[name]();
+      else if (name === "highlight" && value) setHighlight(String(value).toUpperCase());
+      else editor.command(name, value);
       updateRibbon();
+      rulers.schedule();
       const saved = wasClean ? (await save()).saved : false;
-      return { done: command, formatting: [...editor.formatting().marks], block: editor.formatting().block, saved };
+      const now = editor.formatting();
+      return { done: command, formatting: [...now.marks], block: now.block, paragraph: now.paragraph, text: now.text, saved };
     },
     "find-replace": async ({ find: query, replace, matchCase = false, wholeWord = false, regex = false }) => {
       if (!editor || doc.status === "readonly") throw new Error("No editable document is open");
@@ -1450,7 +2107,7 @@ registerPage("writer", {
       if (!range) throw new Error("Text not found (it must lie within one paragraph, as writer_read shows it)");
       const wasClean = !doc.dirty;
       editor.suggest(range[0], range[1], String(replacement), String(who));
-      review.set(true);
+      setLeft("comments");
       const saved = wasClean ? (await save()).saved : false;
       return { suggested: true, saved };
     },
@@ -1460,7 +2117,7 @@ registerPage("writer", {
       if (!range) throw new Error("Text not found (it must lie within one paragraph, as writer_read shows it)");
       const wasClean = !doc.dirty;
       const id = editor.addComment(range[0], range[1], String(comment), String(who));
-      review.set(true);
+      setLeft("comments");
       const saved = wasClean ? (await save()).saved : false;
       return { id, saved };
     },
@@ -1485,42 +2142,54 @@ registerPage("writer", {
         const wasClean = !doc.dirty;
         if (!editor.setSettings(set)) throw new Error("The document's YAML header does not parse");
         renderToolbar();
-        pages.refresh();
-        lines.schedule();
+        syncDocumentView();
         syncTracking();
         if (wasClean) await save();
       }
       return { settings: editor.settings() };
     },
-    view: async ({ lineNumbers, zoom: z, outline, pageView }) => {
-      if (lineNumbers !== undefined) await setLineNumbers(Boolean(lineNumbers));
-      if (pageView !== undefined) await setPageView(Boolean(pageView));
+    /** The window: zoom, panels, rulers, status bar, ribbon tab. Line numbers are the document's (Layout). */
+    view: async ({ lineNumbers, zoom: z, outline, comments, rulers: showRulers, statusBar, toolbar, marks, tab, fit: fitTo }) => {
+      if (lineNumbers !== undefined) {
+        const mode = lineNumbers === true ? "continuous" : lineNumbers === false ? "none" : String(lineNumbers);
+        const wasClean = !doc.dirty;
+        setLineNumbering(mode);
+        if (wasClean) await save();
+      }
       if (z !== undefined) setZoom(Number(z));
-      if (outline !== undefined) { outlineOpen = Boolean(outline); renderOutline(); }
-      return { lineNumbers: lines.on, pageView: pages.on, zoom, outline: outlineOpen };
+      if (fitTo) fit(fitTo === "page" ? "page" : "width");
+      if (outline !== undefined) setLeft(outline ? "outline" : leftOpen === "outline" ? null : leftOpen);
+      if (comments !== undefined) setLeft(comments ? "comments" : leftOpen === "comments" ? null : leftOpen);
+      const changes = {};
+      if (showRulers !== undefined) changes.rulers = Boolean(showRulers);
+      if (statusBar !== undefined) changes.statusBar = Boolean(statusBar);
+      if (toolbar !== undefined) changes.toolbar = Boolean(toolbar);
+      if (marks !== undefined) changes.marks = Boolean(marks);
+      if (Object.keys(changes).length) setView(changes);
+      if (tab) { if (tab === "File") backstage.show(); else if (RIBBON_TABS.includes(tab)) selectRibbonTab(tab); }
+      return { lineNumbers: lines.mode, zoom, panel: leftOpen, ...view, tab: ribbonTab };
     },
   },
 });
 
 // ---------------------------------------------------------------- start --
 
-$("#doc-icon").append(icon("writer"));
 {
-  const prefs = await browser.storage.local.get(["writer.ribbon", "writer.zoom", "writer.lineNumbers", "writer.language", "writer.pageView", "writer.author", "writer.display"]).catch(() => ({}));
+  const prefs = await browser.storage.local.get(["writer.ribbon", "writer.zoom", "writer.language", "writer.author", "writer.display", "writer.view"]).catch(() => ({}));
   author = prefs["writer.author"] ?? "";
   if (DISPLAYS.some(([v]) => v === prefs["writer.display"])) display = prefs["writer.display"];
   ui.page.classList.toggle("show-final", display === "final");
   ui.page.classList.toggle("show-original", display === "original");
-  if (RIBBON_TABS.includes(prefs["writer.ribbon"])) ribbonTab = prefs["writer.ribbon"];
+  if (RIBBON_TABS.includes(prefs["writer.ribbon"]) && prefs["writer.ribbon"] !== "File") ribbonTab = prefs["writer.ribbon"];
   if (prefs["writer.language"]) grammarLanguage = prefs["writer.language"];
+  if (prefs["writer.view"] && typeof prefs["writer.view"] === "object") for (const key of Object.keys(view)) if (typeof prefs["writer.view"][key] === "boolean") view[key] = prefs["writer.view"][key];
   ui.language.textContent = (LANGUAGES.find(([v]) => v === grammarLanguage) ?? ["", grammarLanguage])[1];
+  renderStatusBar();
   setZoom(prefs["writer.zoom"] ?? 1);
-  lines.set(Boolean(prefs["writer.lineNumbers"]));
-  pages.set(Boolean(prefs["writer.pageView"]));
 }
-ui.trackState.addEventListener("click", () => void setTracking(false));
-ui.zoom.addEventListener("click", (event) => contextMenu(event, ZOOMS.map((z) => ({ label: `${Math.round(z * 100)}%`, icon: Math.abs(z - zoom) < 0.001 ? "check" : null, run: () => setZoom(z) }))));
-ui.language.addEventListener("click", (event) => contextMenu(event, LANGUAGES.map(([v, label]) => ({ label, icon: v === grammarLanguage ? "check" : null, run: () => setLanguage(v) }))));
+ui.language.addEventListener("click", () => dropdown(ui.language, LANGUAGES.map(([v, label]) => ({ label, checked: v === grammarLanguage, run: () => setLanguage(v) }))));
+// The backstage covers the window below the document tabs.
+new ResizeObserver(() => ui.backstage.style.setProperty("--bs-top", `${$("#tabs").getBoundingClientRect().bottom}px`)).observe($("#tabs"));
 // The tabs of the last session come back (with their unsaved changes); before tabs, the last document.
 const restored = await tabs.restore();
 if (!(await takeHandoff()) && !restored) {

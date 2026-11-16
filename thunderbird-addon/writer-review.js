@@ -1,4 +1,4 @@
-// The review panel beside the page, as in ONLYOFFICE: the document's comments (author, date, the
+// The comments panel on the left, as in ONLYOFFICE: the document's comments (author, date, the
 // commented text, edit and resolve) and its tracked changes (accept or reject each). Clicking an
 // entry selects its text. The panel follows edits; the comment under the cursor is highlighted.
 import { h, iconButton, ask, background } from "./shared/page.js";
@@ -10,7 +10,7 @@ const when = (date) => {
 };
 const short = (text, n = 90) => (text.length > n ? `${text.slice(0, n - 1)}…` : text);
 
-export function createReviewPanel({ mount, getEditor, getDocName, onChange, authorHue }) {
+export function createReviewPanel({ mount, getEditor, getDocName, onChange, onClose, authorHue }) {
   const panel = h("aside.rp", { hidden: true, "aria-label": "Comments and changes" });
   mount.append(panel);
   let open = false;
@@ -49,13 +49,14 @@ export function createReviewPanel({ mount, getEditor, getDocName, onChange, auth
         iconButton("check", "Accept this change", () => { editor.resolveChanges(true, c); onChange(); }, { small: true }),
         iconButton("close", "Reject this change", () => { editor.resolveChanges(false, c); onChange(); }, { small: true }))));
     panel.replaceChildren(
+      h("div.wp-panel-head", {}, "Comments", h("span.spacer"), h("button", { type: "button", title: "Close", onclick: () => { open = false; draw(); onClose?.(); } }, icon("w-close", { size: 18 }))),
       h("div.rp-section", {}, h("h2", {}, icon("comment", { size: 16 }), `Comments (${comments.length})`)),
-      ...(comments.length ? commentCards : [h("p.rp-empty", {}, "No comments. Select text and choose Review → Comment (Ctrl+Alt+M).")]),
+      ...(comments.length ? commentCards : [h("p.rp-empty", {}, "No comments. Select text and choose Collaboration → Add Comment (Ctrl+Alt+M).")]),
       h("div.rp-section", {}, h("h2", {}, icon("track_changes", { size: 16 }), `Changes (${changes.length})`),
         changes.length ? h("span.rp-all", {},
           h("button.btn.small", { type: "button", onclick: () => { editor.resolveChanges(true); onChange(); } }, "Accept all"),
           h("button.btn.small", { type: "button", onclick: () => { editor.resolveChanges(false); onChange(); } }, "Reject all")) : null),
-      ...(changes.length ? changeCards : [h("p.rp-empty", {}, "No tracked changes. Turn on Review → Track changes to record edits.")]),
+      ...(changes.length ? changeCards : [h("p.rp-empty", {}, "No tracked changes. Turn on Collaboration → Track Changes to record edits.")]),
     );
   }
 

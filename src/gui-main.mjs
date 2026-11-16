@@ -340,10 +340,10 @@ register("writer_export", "Export the open document with Quarto, next to it: doc
   to: z.enum(["docx", "html", "pdf"]).default("docx"),
 }, async ({ to }) => text(await gui("page", { page: "writer", type: "export", format: to }, { timeoutMs: 660_000 })));
 
-register("writer_format", "Apply a ribbon command to `text` (an exact passage within one paragraph, selected first) or to the user's current selection: bold, italic, underline, strike, superscript, subscript, highlight, smallcaps, code, clear (character formatting); paragraph, heading (value 1–6), quote, bullet, ordered, indent, outdent (the block). Saves when the document had no unsaved changes.", {
-  command: z.enum(["bold", "italic", "underline", "strike", "superscript", "subscript", "highlight", "smallcaps", "code", "clear", "paragraph", "heading", "quote", "bullet", "ordered", "indent", "outdent"]),
+register("writer_format", "Apply a ribbon command to `text` (an exact passage within one paragraph, selected first) or to the user's current selection. Characters: bold, italic, underline, strike, superscript, subscript, smallcaps, code, clear; highlight (yellow, or `value` a colour #RRGGBB), color (#RRGGBB, null for automatic), font (a font name, null for the document's), size (points, null for the document's). Paragraphs (every paragraph the selection touches): align (left, center, right, justify), line-spacing (1, 1.15, 1.5, 2…), space-before and space-after (points), indent-left, indent-right and first-line (cm; a negative first-line hangs). Blocks: paragraph, heading (value 1–6), quote, bullet, ordered, indent, outdent. The file keeps formatting as Pandoc divs and spans with a style attribute, which the PDF and Word exports honour. Saves when the document had no unsaved changes.", {
+  command: z.enum(["bold", "italic", "underline", "strike", "superscript", "subscript", "highlight", "smallcaps", "code", "clear", "color", "font", "size", "align", "line-spacing", "space-before", "space-after", "indent-left", "indent-right", "first-line", "paragraph", "heading", "quote", "bullet", "ordered", "indent", "outdent"]),
   text: z.string().optional(),
-  value: z.number().int().min(1).max(6).optional().describe("heading level"),
+  value: z.union([z.number(), z.string(), z.null()]).optional().describe("heading level, colour, font, size, alignment, spacing or indent, as the command needs"),
 }, async ({ command, text: passage, value }) => text(await gui("page", { page: "writer", type: "format", command, text: passage, value })));
 
 register("writer_find_replace", "Replace every occurrence of `find` in the open document (as the reader sees the text). Matches inside citations or other chips are counted but left alone. Saves when the document had no unsaved changes.", {
@@ -375,11 +375,17 @@ register("writer_changes", "The open document's tracked changes and comments (au
   text: z.string().optional(),
 }, async (args) => text(await gui("page", { page: "writer", type: "changes", ...args })));
 
-register("writer_view", "The Writer's view for the user: line numbers in the margin, page view (the page as the PDF sets it, with page ends), zoom (0.5–2), the navigation outline.", {
-  lineNumbers: z.boolean().optional(),
-  pageView: z.boolean().optional(),
-  zoom: z.number().min(0.5).max(2).optional(),
+register("writer_view", "The Writer's window for the user, laid out as ONLYOFFICE's: zoom (0.5–5) or fit (page, width); the left panel (outline of headings, or comments and changes); rulers, status bar, ribbon (toolbar) and formatting marks shown or hidden; the ribbon tab to show (File opens the backstage). lineNumbers is the document's own setting (Layout → Line numbers: none, continuous, page), shown in the margin and kept in the PDF and Word exports; changing it saves the document when it had no unsaved changes.", {
+  lineNumbers: z.union([z.boolean(), z.enum(["none", "continuous", "page"])]).optional(),
+  zoom: z.number().min(0.5).max(5).optional(),
+  fit: z.enum(["page", "width"]).optional(),
   outline: z.boolean().optional(),
+  comments: z.boolean().optional(),
+  rulers: z.boolean().optional(),
+  statusBar: z.boolean().optional(),
+  toolbar: z.boolean().optional(),
+  marks: z.boolean().optional(),
+  tab: z.enum(["File", "Home", "Insert", "Layout", "References", "Collaboration", "View"]).optional(),
 }, async (args) => text(await gui("page", { page: "writer", type: "view", ...args })));
 
 // ------------------------------------------------------------- slides --

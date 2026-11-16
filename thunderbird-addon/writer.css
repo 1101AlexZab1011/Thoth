@@ -1,114 +1,349 @@
-body { display: flex; flex-direction: column; background: var(--mw-bg); }
-
-/* --- top bar -------------------------------------------------------------- */
-.writer-bar { gap: 10px; }
-.doc-icon { display: grid; place-items: center; width: 24px; height: 24px; color: var(--mw-primary); flex: none; }
-.doc-icon .icon { width: 22px; height: 22px; }
-.identity { display: flex; flex-direction: column; min-width: 0; line-height: 1.2; }
-.identity h1 { overflow: hidden; text-overflow: ellipsis; }
-.identity .subtitle { font-family: var(--mw-font-mono); font-size: 11.5px; }
-.actions { display: flex; gap: 2px; align-items: center; }
-.chip.saved { background: var(--mw-success-soft); color: var(--mw-success); }
-.chip.unsaved { background: var(--mw-surface-3); color: var(--mw-text-2); }
-
-/* --- ribbon ------------------------------------------------------------------ */
-.toolbar {
-  flex: none; padding: 0 10px 5px;
-  background: var(--mw-surface); border-bottom: 1px solid var(--mw-border);
+/* The Writer, laid out and coloured as ONLYOFFICE's document editor (light theme): a grey window,
+   ribbon tabs on it, the ribbon as a white card, rulers, the document on white sheets, side bars of
+   panels, a white status bar. Sizes and colours were measured from ONLYOFFICE's own screens. */
+:root {
+  --wp-font: "Segoe UI", "Open Sans", "Noto Sans", Arial, sans-serif;
+  --wp-chrome: #f3f3f3;
+  --wp-card: #ffffff;
+  --wp-text: #333333;
+  --wp-icon: #444444;
+  --wp-muted: #8a8a8a;
+  --wp-disabled: #bdbdbd;
+  --wp-border: #cbcbcb;
+  --wp-sep: #eaeaea;
+  --wp-hover: #ebebeb;
+  --wp-pressed: #e1e1e1;
+  --wp-accent: #446995;
+  --wp-select: #4473ca;
+  --wp-ruler-margin: #d9d9d9;
+  --wp-ruler-text: #ffffff;
+  --wp-ruler-ink: #555555;
+  --wp-page-border: #cccccc;
+  --wp-input-border: #cfcfcf;
 }
-.rb-tabs { display: flex; gap: 2px; margin: 0 -2px 5px; border-bottom: 1px solid var(--mw-border); }
+:root[data-theme="dark"] {
+  --wp-chrome: #2b2b2b; --wp-card: #383838; --wp-text: #e8e8e8; --wp-icon: #d6d6d6; --wp-muted: #a0a0a0; --wp-disabled: #6a6a6a;
+  --wp-border: #555555; --wp-sep: #4a4a4a; --wp-hover: #474747; --wp-pressed: #555555; --wp-accent: #8ab4f8; --wp-select: #8ab4f8;
+  --wp-ruler-margin: #4a4a4a; --wp-ruler-text: #3a3a3a; --wp-ruler-ink: #cfcfcf; --wp-page-border: #555555; --wp-input-border: #5a5a5a;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --wp-chrome: #2b2b2b; --wp-card: #383838; --wp-text: #e8e8e8; --wp-icon: #d6d6d6; --wp-muted: #a0a0a0; --wp-disabled: #6a6a6a;
+    --wp-border: #555555; --wp-sep: #4a4a4a; --wp-hover: #474747; --wp-pressed: #555555; --wp-accent: #8ab4f8; --wp-select: #8ab4f8;
+    --wp-ruler-margin: #4a4a4a; --wp-ruler-text: #3a3a3a; --wp-ruler-ink: #cfcfcf; --wp-page-border: #555555; --wp-input-border: #5a5a5a;
+  }
+}
+
+body.wp { display: flex; flex-direction: column; background: var(--wp-chrome); color: var(--wp-text); font: 12.5px/1.35 var(--wp-font); }
+.tabs-host { flex: none; }
+
+/* --- the header: ribbon tabs, the document's name ------------------------------ */
+.wp-header { flex: none; height: 32px; display: flex; align-items: stretch; gap: 8px; padding: 0 12px 0 10px; background: var(--wp-chrome); }
+.wp-header .spacer { flex: 1; }
+.rb-tabs { display: flex; align-items: stretch; }
 .rb-tab {
-  height: 30px; padding: 0 12px; border: 0; border-bottom: 2px solid transparent; margin-bottom: -1px; background: none;
-  color: var(--mw-text-2); font: 560 12.5px var(--mw-font); cursor: pointer;
+  position: relative; padding: 0 12px; border: 0; background: none; color: var(--wp-text); font: 13.5px var(--wp-font); cursor: pointer; white-space: nowrap;
 }
-.rb-tab:hover { color: var(--mw-text); background: var(--mw-hover); border-radius: var(--mw-radius-s) var(--mw-radius-s) 0 0; }
-.rb-tab.active { color: var(--mw-primary); border-bottom-color: var(--mw-primary); }
+.rb-tab::after { content: ""; position: absolute; left: 6px; right: 6px; bottom: 3px; height: 2px; border-radius: 1px; background: transparent; transition: background 120ms; }
+.rb-tab:hover::after { background: var(--wp-border); }
+.rb-tab.active::after { background: var(--wp-accent); }
+.wp-title { align-self: center; max-width: 40vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13.5px; color: var(--wp-text); }
+.wp-header .chip { align-self: center; }
+.chip.saved { background: var(--mw-success-soft); color: var(--mw-success); }
+.chip.unsaved { background: var(--wp-sep); color: var(--wp-muted); }
+
+/* --- the ribbon ------------------------------------------------------------------- */
+.toolbar { flex: none; padding: 0 10px 8px; background: var(--wp-chrome); }
+.toolbar.collapsed { padding-bottom: 0; }
+.toolbar .tb-rows {
+  display: flex; align-items: stretch; height: 84px; padding: 9px 4px; overflow: hidden;
+  background: var(--wp-card); border-radius: 6px; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.07);
+}
+.toolbar .tb-rows.enter { animation: rb-enter 170ms cubic-bezier(0.2, 0, 0, 1); }
+@keyframes rb-enter { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .toolbar .tb-rows.enter { animation: none; } }
+.toolbar.collapsed .tb-rows { display: none; }
+.toolbar .tb-group { display: flex; align-items: center; gap: 2px; flex: none; padding: 0 8px; position: relative; }
+.toolbar .tb-group + .tb-group::before { content: ""; position: absolute; left: 0; top: 4px; bottom: 4px; width: 1px; background: var(--wp-sep); }
+.toolbar .rb-stack { display: grid; grid-template-rows: 26px 26px; row-gap: 14px; align-content: center; }
+.toolbar .rb-row { display: flex; align-items: center; gap: 4px; }
+.toolbar .rb-row + .rb-row { }
+.toolbar .rb-split { display: inline-block; width: 8px; }
+
+/* Small buttons: an icon, with an arrow when they open a list. */
+.toolbar .rb-ico {
+  display: inline-flex; align-items: center; justify-content: center; gap: 0; height: 26px; min-width: 26px; padding: 0 3px;
+  border: 0; border-radius: 2px; background: none; color: var(--wp-icon); cursor: pointer;
+}
+.toolbar .rb-ico .icon { width: 20px; height: 20px; }
+.toolbar .rb-ico .rb-caret { width: 14px; height: 14px; margin-left: 1px; color: var(--wp-muted); }
+.toolbar .rb-ico:hover { background: var(--wp-hover); }
+.toolbar [aria-pressed="true"] { background: var(--wp-pressed) !important; }
+.toolbar .rb-ico:disabled, .toolbar .rb-btn:disabled { color: var(--wp-disabled); cursor: default; background: none; }
+/* A colour button: the icon with the colour as a bar under it. */
+.toolbar .rb-color { position: relative; }
+.toolbar .rb-color .rb-swatch { position: absolute; left: 6px; bottom: 3px; width: 17px; height: 3px; }
+
+/* Big buttons: icon over label, the ribbon's full height. */
 .toolbar .rb-btn {
-  display: inline-flex; align-items: center; gap: 5px; height: 30px; padding: 0 8px; border: 0; border-radius: var(--mw-radius-s);
-  background: none; color: var(--mw-text-2); font: 12.5px var(--mw-font); white-space: nowrap; cursor: pointer;
+  display: inline-flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 4px; min-width: 44px; height: 66px; padding: 4px 5px 0;
+  border: 0; border-radius: 2px; background: none; color: var(--wp-text); font: 12px/12.5px var(--wp-font); cursor: pointer; text-align: center;
 }
-.toolbar .rb-btn:hover { background: var(--mw-hover); color: var(--mw-text); }
-.toolbar .rb-btn[aria-pressed="true"], .toolbar .rb-style[aria-pressed="true"] { background: var(--mw-primary-soft); color: var(--mw-primary-soft-text); }
-.toolbar .rb-menu { padding-right: 4px; }
-.toolbar .rb-menu > span { max-width: 140px; overflow: hidden; text-overflow: ellipsis; }
-/* The paragraph style box and its list, each style drawn as it looks. */
-.toolbar .rb-style-select {
-  display: inline-flex; align-items: center; justify-content: space-between; gap: 6px; width: 150px; height: 30px; padding: 0 6px 0 10px;
-  border: 1px solid var(--mw-border); border-radius: var(--mw-radius-s); background: var(--mw-bg); color: var(--mw-text); cursor: pointer;
+.toolbar .rb-btn .icon { width: 26px; height: 26px; color: var(--wp-icon); flex: none; }
+.toolbar .rb-btn .rb-label { white-space: pre-line; }
+.toolbar .rb-btn .rb-caret { width: 13px; height: 13px; color: var(--wp-muted); margin-top: -3px; }
+.toolbar .rb-btn:hover { background: var(--wp-hover); }
+.toolbar .rb-btn:disabled .icon { color: var(--wp-disabled); }
+
+/* A box that shows a value (font, size, zoom) and opens a list. */
+.toolbar .rb-combo {
+  display: inline-flex; align-items: center; justify-content: space-between; gap: 2px; height: 24px; padding: 0 2px 0 6px; margin-right: 4px;
+  border: 1px solid var(--wp-input-border); border-radius: 2px; background: var(--wp-card); color: var(--wp-text); font: 13px var(--wp-font); cursor: pointer;
 }
-.toolbar .rb-style-select:hover { border-color: var(--mw-border-strong); }
-.rb-style-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.rb-style-menu { min-width: 200px; padding: 4px; }
+.toolbar .rb-combo > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
+.toolbar .rb-combo:hover { border-color: var(--wp-muted); }
+.toolbar .rb-combo .icon { color: var(--wp-muted); flex: none; width: 15px; height: 15px; }
+/* A number with steppers (Layout: indents and spacing). */
+.toolbar .rb-field { display: grid; grid-template-columns: auto 92px; align-items: center; column-gap: 10px; }
+.toolbar .rb-field label { white-space: nowrap; font-size: 13px; }
+.toolbar .rb-spin { display: flex; align-items: stretch; height: 24px; border: 1px solid var(--wp-input-border); border-radius: 2px; background: var(--wp-card); }
+.toolbar .rb-spin input { width: 100%; min-width: 0; border: 0; padding: 0 6px; background: none; font: 13px var(--wp-font); color: var(--wp-text); outline: none; }
+.toolbar .rb-spin .rb-steps { display: flex; flex-direction: column; border-left: 0; }
+.toolbar .rb-spin .rb-steps button { flex: 1; width: 18px; padding: 0; border: 0; background: none; color: var(--wp-muted); cursor: pointer; display: grid; place-items: center; }
+.toolbar .rb-spin .rb-steps button:hover { background: var(--wp-hover); color: var(--wp-text); }
+.toolbar .rb-spin .rb-steps .icon { width: 12px; height: 12px; }
+/* A checkbox row (View). */
+.toolbar .rb-check { display: inline-flex; align-items: center; gap: 8px; height: 26px; padding: 0 6px 0 2px; border: 0; background: none; color: var(--wp-text); font: 13px var(--wp-font); cursor: pointer; white-space: nowrap; border-radius: 2px; }
+.toolbar .rb-check:hover { background: var(--wp-hover); }
+.toolbar .rb-check .icon { width: 20px; height: 20px; color: var(--wp-icon); }
+.toolbar .rb-check[aria-pressed="true"] { background: none !important; }
+/* A small button with its label beside it (References, View). */
+.toolbar .rb-wide { display: inline-flex; align-items: center; gap: 8px; height: 26px; padding: 0 6px 0 3px; border: 0; border-radius: 2px; background: none; color: var(--wp-text); font: 13px var(--wp-font); cursor: pointer; white-space: nowrap; }
+.toolbar .rb-wide .icon { width: 20px; height: 20px; color: var(--wp-icon); }
+.toolbar .rb-wide .rb-caret { width: 14px; height: 14px; color: var(--wp-muted); }
+.toolbar .rb-wide:hover { background: var(--wp-hover); }
+.toolbar .rb-wide:disabled { color: var(--wp-disabled); cursor: default; background: none; }
+.toolbar .rb-wide:disabled .icon { color: var(--wp-disabled); }
+
+/* The style gallery: tiles in a frame, the current one outlined; the arrow lists every style. */
+.toolbar .rb-gallery { display: flex; align-items: stretch; height: 44px; border: 1px solid var(--wp-input-border); background: var(--wp-card); }
+.toolbar .rb-tile {
+  width: 107px; padding: 0 10px 7px; border: 0; border-right: 1px solid var(--wp-sep); background: none; color: var(--wp-text);
+  display: flex; align-items: flex-end; text-align: left; cursor: pointer; outline-offset: -1px;
+}
+.toolbar .rb-tile:hover { background: var(--wp-hover); }
+.toolbar .rb-tile[aria-pressed="true"] { outline: 1px solid var(--wp-select); background: none !important; }
+.toolbar .rb-tile > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.toolbar .rb-gallery-more { width: 30px; border: 0; background: none; color: var(--wp-muted); cursor: pointer; display: grid; place-items: center; }
+.toolbar .rb-gallery-more:hover { background: var(--wp-hover); }
+/* The list of all styles, each drawn as it looks. */
+.rb-style-menu { min-width: 220px; padding: 4px; }
 .rb-style-menu .rb-style-item {
-  display: block; width: 100%; padding: 6px 12px; border: 0; border-radius: var(--mw-radius-s); background: none; color: var(--mw-text);
+  display: block; width: 100%; padding: 6px 12px; border: 0; border-radius: 2px; background: none; color: var(--mw-text);
   text-align: left; cursor: pointer; white-space: nowrap;
 }
 .rb-style-menu .rb-style-item:hover, .rb-style-menu .rb-style-item:focus-visible { background: var(--mw-hover); outline: none; }
 .rb-style-menu .rb-style-item.active { background: var(--mw-primary-soft); color: var(--mw-primary-soft-text); }
-:is(.rb-style-menu, .toolbar) .rb-style-paragraph { font: 14px "Source Serif 4", "Noto Serif", Georgia, serif; }
-:is(.rb-style-menu, .toolbar) .rb-style-h1 { font: 700 19px var(--mw-font); }
-:is(.rb-style-menu, .toolbar) .rb-style-h2 { font: 680 17px var(--mw-font); }
-:is(.rb-style-menu, .toolbar) .rb-style-h3 { font: 680 15px var(--mw-font); }
-:is(.rb-style-menu, .toolbar) .rb-style-h4 { font: 650 14px var(--mw-font); }
-:is(.rb-style-menu, .toolbar) .rb-style-quote { font: italic 14px "Source Serif 4", "Noto Serif", Georgia, serif; color: var(--mw-text-2); }
-:is(.rb-style-menu, .toolbar) .rb-style-code_block { font: 13px var(--mw-font-mono); }
-/* In the box itself the label keeps the toolbar's height (and beats the rules above). */
-.toolbar .rb-style-select .rb-style-label { font-size: min(1em, 14px); line-height: 1; }
-.toolbar .rb-style-select .rb-style-label.rb-style-h1, .toolbar .rb-style-select .rb-style-label.rb-style-h2 { font-size: 14px; }
-/* The bar wraps between groups when the editor is narrow. Each group draws its divider on its left, one
-   pixel outside; the clip hides it on whichever group starts a row. */
-.toolbar .tb-rows { display: flex; flex-wrap: wrap; align-items: center; row-gap: 2px; overflow: hidden; }
-.toolbar .tb-group { display: flex; align-items: center; gap: 2px; flex: none; margin-left: -1px; padding: 0 6px; border-left: 1px solid var(--mw-border); }
-.toolbar .icon-btn[aria-pressed="true"] { background: var(--mw-primary-soft); color: var(--mw-primary-soft-text); }
-.toolbar .tb-text { height: 30px; padding: 0 10px; border: 0; border-radius: var(--mw-radius-s); background: none; color: var(--mw-text-2); font-weight: 600; font-size: 12.5px; cursor: pointer; }
-.toolbar .tb-text:hover { background: var(--mw-hover); color: var(--mw-text); }
+:is(.rb-style-menu, .toolbar) .rb-style-paragraph { font: 13.5px "Times New Roman", "Liberation Serif", Tinos, serif; }
+:is(.rb-style-menu, .toolbar) .rb-style-h1 { font: 700 15px var(--wp-font); }
+:is(.rb-style-menu, .toolbar) .rb-style-h2 { font: 700 14px var(--wp-font); }
+:is(.rb-style-menu, .toolbar) .rb-style-h3 { font: 700 13px var(--wp-font); }
+:is(.rb-style-menu, .toolbar) .rb-style-h4 { font: 700 12.5px var(--wp-font); }
+:is(.rb-style-menu, .toolbar) .rb-style-quote { font: italic 13.5px "Times New Roman", "Liberation Serif", Tinos, serif; color: var(--wp-muted); }
+:is(.rb-style-menu, .toolbar) .rb-style-code_block { font: 12px var(--mw-font-mono); }
+
+/* Colour menus (font colour, highlight) */
+.wp-colors { padding: 8px; display: grid; gap: 8px; }
+.wp-colors .wp-auto { display: flex; align-items: center; gap: 8px; padding: 4px 6px; border: 0; background: none; color: var(--mw-text); font: 13px var(--wp-font); cursor: pointer; border-radius: 2px; }
+.wp-colors .wp-auto:hover { background: var(--mw-hover); }
+.wp-colors .wp-auto span { width: 14px; height: 14px; border: 1px solid #888; background: var(--c, transparent); }
+.wp-colors h3 { margin: 4px 2px 0; font: 600 12px var(--wp-font); color: var(--mw-text-2); }
+.wp-swatches { display: grid; grid-template-columns: repeat(10, 16px); gap: 4px; }
+.wp-swatches button { width: 16px; height: 16px; padding: 0; border: 1px solid rgba(0, 0, 0, 0.15); background: var(--c); cursor: pointer; }
+.wp-swatches button:hover { outline: 2px solid var(--wp-select); outline-offset: 1px; }
+/* The table size picker (Insert → Table) */
+.wp-grid { padding: 8px; }
+.wp-grid .cells { display: grid; grid-template-columns: repeat(10, 16px); gap: 2px; }
+.wp-grid .cells span { width: 16px; height: 16px; border: 1px solid var(--mw-border-strong); background: var(--mw-surface); }
+.wp-grid .cells span.on { background: var(--mw-primary-soft); border-color: var(--wp-select); }
+.wp-grid .size { margin-top: 6px; text-align: center; font: 12px var(--wp-font); color: var(--mw-text-2); }
+
+.page.painting .wr-doc { cursor: copy; }
 
 .conflict {
   flex: none; display: flex; align-items: center; gap: 10px; padding: 8px 14px;
-  background: var(--mw-warning-soft); color: var(--mw-warning); border-bottom: 1px solid var(--mw-border); font-size: 13px;
+  background: var(--mw-warning-soft); color: var(--mw-warning); border-bottom: 1px solid var(--wp-border); font-size: 13px;
 }
 .conflict .spacer { flex: 1; }
 .conflict.danger { background: var(--mw-danger-soft); color: var(--mw-danger); }
+.conflict .btn.small { height: 28px; padding: 0 12px; font-size: 12.5px; }
 
-/* --- body ------------------------------------------------------------------- */
+/* --- body: side bars, panels, the workspace ---------------------------------------- */
 .body { flex: 1; min-height: 0; display: flex; position: relative; }
-.outline {
-  width: 240px; flex: none; overflow: auto; padding: 14px 8px; border-right: 1px solid var(--mw-border); background: var(--mw-surface);
-}
-.outline h2 { margin: 0 8px 8px; font-size: 11.5px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--mw-text-3); font-weight: 650; }
+.wp-sidebar { flex: none; width: 40px; display: flex; flex-direction: column; align-items: center; gap: 7px; padding-top: 18px; background: var(--wp-chrome); }
+.wp-sidebar button { width: 30px; height: 30px; display: grid; place-items: center; border: 0; border-radius: 2px; background: none; color: var(--wp-icon); cursor: pointer; position: relative; }
+.wp-sidebar button .icon { width: 22px; height: 22px; }
+.wp-sidebar button:hover { background: var(--wp-hover); }
+.wp-sidebar button[aria-pressed="true"] { background: var(--wp-pressed); }
+.wp-sidebar button:disabled { color: var(--wp-disabled); cursor: default; background: none; }
+.wp-sidebar button .dot { position: absolute; right: 3px; bottom: 4px; width: 7px; height: 7px; border-radius: 50%; background: #f5bc00; }
+.wp-panel { flex: none; width: 280px; overflow: auto; background: var(--wp-card); border-right: 1px solid var(--wp-border); display: flex; flex-direction: column; }
+.wp-panel.right { border-right: 0; border-left: 1px solid var(--wp-border); width: 260px; }
+.wp-panel-head { display: flex; align-items: center; height: 40px; padding: 0 8px 0 14px; font: 600 13px var(--wp-font); border-bottom: 1px solid var(--wp-sep); flex: none; }
+.wp-panel-head .spacer { flex: 1; }
+.wp-panel-head button { width: 26px; height: 26px; display: grid; place-items: center; border: 0; background: none; color: var(--wp-icon); cursor: pointer; border-radius: 2px; }
+.wp-panel-head button:hover { background: var(--wp-hover); }
+
+.outline { padding: 8px 6px; overflow: auto; }
 .outline button {
-  display: block; width: 100%; padding: 5px 8px; border: 0; border-radius: var(--mw-radius-s); background: none;
-  text-align: left; font-size: 13px; color: var(--mw-text-2); cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  display: block; width: 100%; padding: 5px 8px; border: 0; border-radius: 2px; background: none;
+  text-align: left; font: 13px var(--wp-font); color: var(--wp-text); cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.outline button:hover { background: var(--mw-hover); color: var(--mw-text); }
-.outline button.current { background: var(--mw-primary-soft); color: var(--mw-primary-soft-text); }
-.outline button[data-level="0"] { font-style: italic; }
-.outline button[data-level="2"] { padding-left: 20px; }
-.outline button[data-level="3"] { padding-left: 32px; }
-.outline button[data-level="4"], .outline button[data-level="5"], .outline button[data-level="6"] { padding-left: 44px; font-size: 12.5px; }
+.outline button:hover { background: var(--wp-hover); }
+.outline button.current { background: var(--wp-pressed); }
+.outline button[data-level="2"] { padding-left: 22px; }
+.outline button[data-level="3"] { padding-left: 36px; }
+.outline button[data-level="4"], .outline button[data-level="5"], .outline button[data-level="6"] { padding-left: 50px; font-size: 12.5px; }
+.outline .empty { color: var(--wp-muted); padding: 4px 10px; font-size: 12.5px; }
 
-.scroll { flex: 1; min-width: 0; overflow: auto; position: relative; }
-.page {
-  max-width: 820px; margin: 28px auto 120px; padding: 56px 72px 72px;
-  background: var(--mw-surface); border-radius: var(--mw-radius); box-shadow: var(--mw-shadow-2);
+/* Paragraph settings (right panel) */
+.ps { padding: 12px 14px 24px; display: grid; gap: 14px; font: 13px var(--wp-font); }
+.ps h3 { margin: 0; font: 600 12.5px var(--wp-font); }
+.ps .ps-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.ps label { display: grid; gap: 4px; color: var(--wp-muted); font-size: 12px; }
+.ps input, .ps select { height: 26px; padding: 0 6px; border: 1px solid var(--wp-input-border); border-radius: 2px; background: var(--wp-card); color: var(--wp-text); font: 13px var(--wp-font); }
+.ps .ps-note { color: var(--wp-muted); font-size: 12px; }
+
+/* The workspace: the corner, the rulers and the scrolling page area. */
+.workspace { flex: 1; min-width: 0; display: grid; grid-template-columns: 14px 1fr; grid-template-rows: 15px 1fr; column-gap: 4px; row-gap: 0; padding: 10px 0 0 4px; background: var(--wp-chrome); position: relative; }
+.workspace.no-rulers { grid-template-columns: 0 1fr; grid-template-rows: 0 1fr; column-gap: 0; padding: 0; }
+.ruler-corner { grid-column: 1; grid-row: 1; border: 1px solid var(--wp-border); background: var(--wp-ruler-text); position: relative; }
+.ruler-corner::after { content: ""; position: absolute; left: 4px; top: 3px; width: 2px; height: 7px; background: var(--wp-text); box-shadow: 0 5px 0 0 var(--wp-text); }
+.ruler-corner::before { content: ""; position: absolute; left: 4px; top: 8px; width: 6px; height: 2px; background: var(--wp-text); }
+.ruler { display: block; width: 100%; height: 100%; }
+.ruler.h { grid-column: 2; grid-row: 1; cursor: default; }
+.ruler.v { grid-column: 1; grid-row: 2; }
+.scroll { grid-column: 2; grid-row: 2; min-width: 0; min-height: 0; overflow: auto; position: relative; }
+.workspace.no-rulers .scroll { grid-column: 1 / span 2; grid-row: 1 / span 2; }
+
+/* --- the page: sheets of the document's paper ------------------------------------- */
+.page { position: relative; margin: 24px auto 40px; width: var(--pv-width, 794px); min-height: var(--pv-height, 1123px); box-sizing: border-box; padding: var(--pv-top, 94px) var(--pv-right, 94px) 0 var(--pv-left, 94px); }
+.pv-sheets { position: absolute; inset: 0; pointer-events: none; z-index: 0; }
+.pv-sheet { position: absolute; left: 0; right: 0; background: #ffffff; outline: 1px solid var(--wp-page-border); }
+.page #editor { position: relative; z-index: 1; }
+.pv-gap { pointer-events: none; user-select: none; margin: 0 !important; padding: 0; }
+/* The document's type, as the PDF and Word file set it. */
+.page .wr-doc {
+  font-family: var(--pv-font); font-size: var(--pv-size); line-height: var(--pv-leading); color: #000; min-height: 0; padding: 0;
+  --pv-base-leading: var(--pv-base, 1.2);
 }
-.page.readonly { box-shadow: 0 0 0 2px var(--mw-danger-soft), var(--mw-shadow-2); }
+.page .wr-doc > *, .page .wr-doc p { margin: 0 0 var(--pv-par, 0.6em); }
+.page .wr-doc h1, .page .wr-doc h2, .page .wr-doc h3, .page .wr-doc h4, .page .wr-doc h5, .page .wr-doc h6 {
+  font-family: var(--pv-heading-font); font-weight: 700; line-height: 1.25; margin: 1.1em 0 0.5em; color: #000;
+}
+.page .wr-doc h1 { font-size: 1.44em; }
+.page .wr-doc h2 { font-size: 1.2em; }
+.page .wr-doc h3 { font-size: 1.05em; }
+.page .wr-doc h4, .page .wr-doc h5, .page .wr-doc h6 { font-size: 1em; }
+.page .wr-doc > :first-child { margin-top: 0; }
+.page .wr-doc a { color: #1155cc; }
+.page.readonly .pv-sheet { outline-color: var(--mw-danger); }
+.page.show-marks .wr-doc p::after, .page.show-marks .wr-doc h1::after, .page.show-marks .wr-doc h2::after, .page.show-marks .wr-doc h3::after, .page.show-marks .wr-doc h4::after { content: "¶"; color: #8a8a8a; font-weight: 400; font-style: normal; margin-left: 1px; }
+.page.show-marks .wr-doc br::after { content: "↵"; color: #8a8a8a; }
 
-/* --- start page -------------------------------------------------------------- */
+/* The title block (the header's title, authors, date and abstract), as the PDF sets it. */
+.wr-doc .wr-titleblock { background: none; border: 0; padding: 0 0 1.4em; margin: 0 0 0.6em; text-align: center; font-family: var(--pv-heading-font); cursor: default; }
+.wr-doc .wr-titleblock:hover { background: none; }
+.wr-doc .wr-titleblock.empty { padding: 0; margin: 0; height: 0; overflow: hidden; }
+.wr-doc .wr-titleblock .tb-title { font-size: 2.07em; font-weight: 700; line-height: 1.2; margin-bottom: 0.6em; }
+.wr-doc .wr-titleblock .tb-subtitle { font-size: 1.44em; line-height: 1.25; margin-bottom: 0.6em; }
+.wr-doc .wr-titleblock .tb-author, .wr-doc .wr-titleblock .tb-date { font-family: var(--pv-font); font-size: 1.2em; margin-bottom: 0.4em; }
+.wr-doc .wr-titleblock .tb-abstract { font-family: var(--pv-font); font-size: 0.92em; text-align: justify; margin: 1.2em 2.2em 0; }
+.wr-doc .wr-titleblock .tb-abstract-head { text-align: center; font-weight: 700; margin-bottom: 0.4em; font-family: var(--pv-heading-font); }
+.wr-doc .wr-titleblock .tb-field { outline: none; border-radius: 2px; cursor: text; }
+.wr-doc .wr-titleblock .tb-field:hover { box-shadow: 0 0 0 1px #c9d6ee; }
+.wr-doc .wr-titleblock .tb-field:focus { box-shadow: 0 0 0 1px var(--wp-select); }
+.wr-doc .wr-titleblock.selected { outline: none; }
+
+/* Citations and cross-references as the reader sees them. */
+.wr-doc .qi.qi-text { background: none; color: inherit; padding: 0; border-radius: 0; font: inherit; border-bottom: 1px dotted #9aa7c7; }
+.wr-doc .qi.qi-text::before { content: none; }
+.wr-doc .qi.qi-text.unknown { border-bottom-color: var(--mw-danger); }
+
+/* --- line numbers (writer-lines.js) ------------------------------------------------- */
+.ln-layer { position: absolute; inset: 0; pointer-events: none; z-index: 1; }
+.ln { position: absolute; width: 40px; text-align: right; color: #000; user-select: none; font-family: var(--pv-font); font-size: var(--pv-size); }
+
+/* --- agent review frames (the marks and cards are in shared/editor.css) ------------ */
+.rv-layer { position: absolute; inset: 0; pointer-events: none; z-index: 2; }
+
+/* --- status bar ------------------------------------------------------------------- */
+.statusbar {
+  flex: none; height: 31px; display: flex; align-items: stretch; padding: 0 6px 0 4px;
+  background: var(--wp-card); border-top: 1px solid var(--wp-border); color: var(--wp-text); font: 13px var(--wp-font);
+}
+.statusbar .sb-item { display: inline-flex; align-items: center; gap: 6px; padding: 0 10px; white-space: nowrap; }
+.statusbar .sb-item + .sb-item, .statusbar .sb-group { border-left: 1px solid var(--wp-sep); }
+.statusbar .sb-message { flex: 1; display: flex; align-items: center; justify-content: center; color: var(--wp-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 10px; border-left: 1px solid var(--wp-sep); }
+.statusbar .sb-btn { border: 0; background: none; color: var(--wp-text); font: 13px var(--wp-font); cursor: pointer; }
+.statusbar .sb-btn:hover { background: var(--wp-hover); }
+.statusbar .sb-btn .icon { width: 18px; height: 18px; color: var(--wp-icon); }
+.statusbar .sb-group { display: inline-flex; align-items: center; gap: 4px; padding: 0 8px; }
+.statusbar .sb-ico { width: 28px; height: 24px; display: grid; place-items: center; border: 0; border-radius: 2px; background: none; color: var(--wp-icon); cursor: pointer; }
+.statusbar .sb-ico .icon { width: 20px; height: 20px; }
+.statusbar .sb-ico:hover { background: var(--wp-hover); }
+.statusbar .sb-ico[aria-pressed="true"] { background: var(--wp-pressed); }
+.statusbar .sb-zoom-label { min-width: 84px; text-align: center; border: 0; background: none; color: var(--wp-text); font: 13px var(--wp-font); cursor: pointer; height: 24px; border-radius: 2px; }
+.statusbar .sb-zoom-label:hover { background: var(--wp-hover); }
+
+/* --- File: the backstage over the window ------------------------------------------- */
+.backstage { position: fixed; left: 0; right: 0; bottom: 0; top: var(--bs-top, 0); z-index: 20; display: flex; background: var(--wp-card); animation: rb-enter 160ms cubic-bezier(0.2, 0, 0, 1); }
+.bs-menu { width: 260px; flex: none; display: flex; flex-direction: column; background: var(--wp-chrome); border-right: 1px solid var(--wp-border); overflow: auto; }
+.bs-menu .bs-sep { height: 1px; background: var(--wp-border); margin: 6px 0; opacity: 0.6; }
+.bs-menu .spacer { flex: 1; }
+.bs-menu button { display: flex; align-items: center; gap: 12px; height: 32px; padding: 0 16px; border: 0; background: none; color: var(--wp-text); font: 14px var(--wp-font); cursor: pointer; text-align: left; flex: none; }
+.bs-menu button .icon { width: 20px; height: 20px; color: var(--wp-icon); }
+.bs-menu button:hover { background: var(--wp-hover); }
+.bs-menu button.active { background: var(--wp-pressed); }
+.bs-menu button.bs-back { height: 50px; }
+.bs-body { flex: 1; overflow: auto; padding: 36px 44px; }
+.bs-body h2 { margin: 0 0 28px; font: 400 22px var(--wp-font); color: var(--wp-text); }
+.bs-formats { display: flex; flex-wrap: wrap; gap: 26px; max-width: 760px; }
+.bs-format { width: 70px; height: 90px; border: 0; padding: 0; background: none; cursor: pointer; position: relative; }
+.bs-format svg { width: 70px; height: 90px; display: block; }
+.bs-format:hover svg { filter: brightness(1.08); }
+.bs-format:focus-visible { outline: 2px solid var(--wp-select); outline-offset: 3px; }
+.bs-info { display: grid; grid-template-columns: 140px minmax(0, 460px); gap: 12px 18px; align-items: start; font-size: 13.5px; }
+.bs-info .bs-key { color: var(--wp-muted); padding-top: 5px; }
+.bs-info input, .bs-info textarea { width: 100%; padding: 4px 8px; border: 1px solid var(--wp-input-border); border-radius: 2px; background: var(--wp-card); color: var(--wp-text); font: 13.5px var(--wp-font); }
+.bs-info textarea { min-height: 80px; resize: vertical; }
+.bs-info .bs-value { padding-top: 5px; overflow-wrap: anywhere; }
+.bs-info textarea.bs-yaml { font: 12.5px/1.45 var(--mw-font-mono); min-height: 220px; }
+.bs-actions { margin-top: 18px; display: flex; gap: 8px; }
+.bs-list { display: grid; gap: 2px; max-width: 640px; }
+.bs-list button { display: flex; align-items: center; gap: 12px; padding: 8px 10px; border: 0; background: none; text-align: left; cursor: pointer; color: var(--wp-text); font: 13.5px var(--wp-font); border-radius: 2px; }
+.bs-list button:hover { background: var(--wp-hover); }
+.bs-list .path { color: var(--wp-muted); font-size: 12px; }
+.bs-create { display: flex; gap: 22px; }
+.bs-create button { width: 120px; display: grid; gap: 8px; justify-items: center; border: 0; background: none; cursor: pointer; color: var(--wp-text); font: 13px var(--wp-font); padding: 8px; border-radius: 2px; }
+.bs-create button:hover { background: var(--wp-hover); }
+.bs-create .sheet { width: 90px; height: 120px; background: #fff; border: 1px solid var(--wp-page-border); display: grid; place-items: center; color: #999; }
+
+/* --- start page -------------------------------------------------------------------- */
 .start { max-width: 720px; margin: 0 auto; padding: 56px 24px; }
-.start h2 { margin: 0 0 6px; font-size: 22px; font-weight: 650; }
-.start p { margin: 0 0 20px; color: var(--mw-text-2); }
+.start h2 { margin: 0 0 6px; font-size: 22px; font-weight: 600; }
+.start p { margin: 0 0 20px; color: var(--wp-muted); }
 .start .buttons { display: flex; gap: 8px; margin-bottom: 28px; }
-.start h3 { margin: 0 0 8px; font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--mw-text-3); }
+.start h3 { margin: 0 0 8px; font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--wp-muted); }
 .recent { display: grid; gap: 4px; }
 .recent button {
-  display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px 12px; border: 0; border-radius: var(--mw-radius);
-  background: var(--mw-surface); text-align: left; cursor: pointer; box-shadow: var(--mw-shadow-1);
+  display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px 12px; border: 0; border-radius: 4px;
+  background: var(--wp-card); text-align: left; cursor: pointer; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
 }
-.recent button:hover { background: var(--mw-surface-2); }
-.recent .icon { color: var(--mw-primary); }
+.recent button:hover { background: var(--wp-hover); }
+.recent .icon { color: var(--wp-accent); }
 .recent .name { font-weight: 560; }
-.recent .path { color: var(--mw-text-3); font: 12px var(--mw-font-mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.recent .path { color: var(--wp-muted); font: 12px var(--mw-font-mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* Pickers (citations, cross-references) */
 .picker .input { width: 100%; margin-bottom: 10px; }
@@ -120,83 +355,59 @@ body { display: flex; flex-direction: column; background: var(--mw-bg); }
 .picker .key { font: 12.5px var(--mw-font-mono); color: var(--mw-primary-soft-text); }
 .picker .meta { font-size: 13px; color: var(--mw-text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-.statusbar {
-  flex: none; height: 30px; display: flex; align-items: center; gap: 14px; padding: 0 14px;
-  background: var(--mw-surface); border-top: 1px solid var(--mw-border); color: var(--mw-text-2); font-size: 12px;
-}
-.statusbar .spacer { flex: 1; }
-.statusbar .sb-btn { height: 22px; padding: 0 8px; border: 0; border-radius: var(--mw-radius-s); background: none; color: var(--mw-text-2); font: 12px var(--mw-font); cursor: pointer; }
-.statusbar .sb-btn:hover { background: var(--mw-hover); color: var(--mw-text); }
-
-/* --- find and replace (writer-find.js) ---------------------------------------- */
+/* --- find and replace (writer-find.js) --------------------------------------------- */
 .fd-bar {
   position: absolute; top: 10px; right: 24px; z-index: 5; display: grid; gap: 6px; padding: 6px 8px;
-  background: var(--mw-surface); border: 1px solid var(--mw-border); border-radius: var(--mw-radius); box-shadow: var(--mw-shadow-2);
+  background: var(--wp-card); border: 1px solid var(--wp-border); border-radius: 4px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
 }
 .fd-row { display: flex; align-items: center; gap: 4px; }
 .fd-input { width: 230px; height: 28px; }
 .fd-replace { padding-left: 32px; }
 .fd-replace .fd-input { width: 230px; }
-.fd-count { min-width: 74px; font-size: 12px; color: var(--mw-text-3); text-align: center; }
+.fd-count { min-width: 74px; font-size: 12px; color: var(--wp-muted); text-align: center; }
 .fd-bar.invalid .fd-count { color: var(--mw-danger); }
 .fd-bar .icon-btn[aria-pressed="true"] { background: var(--mw-primary-soft); color: var(--mw-primary-soft-text); }
 
-/* --- review panel (writer-review.js) -------------------------------------------- */
-.rp {
-  width: 300px; flex: none; overflow: auto; padding: 10px 10px 40px; border-left: 1px solid var(--mw-border); background: var(--mw-surface);
-  display: flex; flex-direction: column; gap: 8px;
-}
+/* --- comments and changes (writer-review.js), in the left panel -------------------- */
+.rp { flex: 1; overflow: auto; padding: 10px 10px 40px; display: flex; flex-direction: column; gap: 8px; }
 .rp-section { display: flex; align-items: center; gap: 8px; margin: 6px 2px 0; }
-.rp-section h2 { display: flex; align-items: center; gap: 6px; margin: 0; font-size: 11.5px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--mw-text-3); font-weight: 650; }
+.rp-section h2 { display: flex; align-items: center; gap: 6px; margin: 0; font: 600 12.5px var(--wp-font); color: var(--wp-text); }
 .rp-all { margin-left: auto; display: flex; gap: 4px; }
 .rp-all .btn.small { height: 24px; padding: 0 8px; font-size: 11.5px; }
-.rp-empty { margin: 0 4px; font-size: 12.5px; color: var(--mw-text-3); }
-.rp-card { padding: 8px 10px; border: 1px solid var(--mw-border); border-radius: var(--mw-radius); background: var(--mw-bg); cursor: pointer; display: grid; gap: 5px; }
-.rp-card:hover { border-color: var(--mw-border-strong); }
+.rp-empty { margin: 0 4px; font-size: 12.5px; color: var(--wp-muted); }
+.rp-card { padding: 8px 10px; border: 1px solid var(--wp-sep); border-radius: 3px; background: var(--wp-card); cursor: pointer; display: grid; gap: 5px; }
+.rp-card:hover { border-color: var(--wp-border); }
 .rp-card.active { border-color: rgb(225, 160, 0); box-shadow: 0 0 0 1px rgb(225, 160, 0); }
 .rp-head { display: flex; align-items: center; gap: 8px; }
 .rp-avatar {
   width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; flex: none;
-  background: hsl(var(--chg-hue, 212) 70% 92%); color: hsl(var(--chg-hue, 212) 60% 32%); font: 700 12px var(--mw-font);
+  background: hsl(var(--chg-hue, 212) 70% 92%); color: hsl(var(--chg-hue, 212) 60% 32%); font: 700 12px var(--wp-font);
 }
 .rp-who { display: flex; flex-direction: column; line-height: 1.25; font-size: 12.5px; min-width: 0; }
-.rp-who span { color: var(--mw-text-3); font-size: 11.5px; }
-.rp-quote { font: italic 12.5px "Source Serif 4", Georgia, serif; color: var(--mw-text-2); border-left: 2px solid rgba(225, 160, 0, 0.75); padding-left: 7px; }
+.rp-who span { color: var(--wp-muted); font-size: 11.5px; }
+.rp-quote { font: italic 12.5px "Liberation Serif", Georgia, serif; color: var(--wp-muted); border-left: 2px solid rgba(225, 160, 0, 0.75); padding-left: 7px; }
 .rp-text { font-size: 13px; line-height: 1.4; overflow-wrap: anywhere; }
 .rp-text ins { color: hsl(var(--chg-hue, 212) 70% 38%); text-decoration: underline; }
 .rp-text del { color: hsl(var(--chg-hue, 212) 55% 45%); }
-.rp-kind { color: var(--mw-text-3); font-size: 12px; }
+.rp-kind { color: var(--wp-muted); font-size: 12px; }
 .rp-actions { display: flex; justify-content: flex-end; gap: 2px; }
-.statusbar .sb-track { background: var(--mw-primary-soft); color: var(--mw-primary-soft-text); font-weight: 600; }
 
-/* --- page view (writer-pages.js) ---------------------------------------------- */
-.page.page-view {
-  max-width: none; width: var(--pv-width); min-height: var(--pv-height); box-sizing: border-box; border-radius: 2px;
-  padding: var(--pv-top) var(--pv-right) var(--pv-bottom) var(--pv-left);
-}
-.page.page-view .wr-doc { font-family: var(--pv-font); font-size: var(--pv-size); line-height: var(--pv-leading); min-height: 0; }
-.page.page-view .wr-doc h1 { font-size: 1.6em; }
-.page.page-view .wr-doc h2 { font-size: 1.35em; }
-.page.page-view .wr-doc h3 { font-size: 1.15em; }
-.page.page-view .wr-doc h4 { font-size: 1.05em; }
-.page.page-view .wr-doc > *, .page.page-view .wr-doc p { margin-bottom: 0.6em; }
-.page.page-view .ln { left: calc(var(--pv-left) - 58px); }
-.pv-layer { position: absolute; inset: 0; pointer-events: none; z-index: 1; }
-.pv-break { position: absolute; left: 0; right: 0; border-top: 1px dashed var(--mw-border-strong); }
-.pv-break span {
-  position: absolute; right: 8px; top: -9px; padding: 0 6px; background: var(--mw-surface); border-radius: 4px;
-  font: 600 10px var(--mw-font); letter-spacing: 0.05em; text-transform: uppercase; color: var(--mw-text-3);
-}
-.pv-break.manual { border-top-style: solid; }
+/* Ribbon drop-downs (writer-menus.js): ONLYOFFICE's square menus. */
+.menu.wp-pop, body.wp .menu { border-radius: 2px; padding: 4px 0; font: 13px var(--wp-font); }
+body.wp .menu .wp-list button { border-radius: 0; padding: 0 16px 0 10px; height: 28px; gap: 8px; font: 13px var(--wp-font); }
+body.wp .menu .wp-swatches button { display: block; width: 16px; height: 16px; padding: 0; border-radius: 0; gap: 0; }
+body.wp .menu .wp-colors .wp-auto { width: 100%; height: 26px; }
 
-/* --- line numbers (writer-lines.js) --------------------------------------------- */
-.ln-layer { position: absolute; inset: 0; pointer-events: none; z-index: 1; }
-.ln { position: absolute; left: 0; width: 52px; padding-right: 2px; text-align: right; font: 11px var(--mw-font-mono); color: var(--mw-text-3); user-select: none; }
-.conflict .btn.small { height: 28px; padding: 0 12px; font-size: 12.5px; }
+/* The gallery takes the room that is left and shows as many tiles as fit; the arrow always shows. */
+.toolbar .tb-group.rb-gallery-group { flex: 1 1 auto; min-width: 150px; }
+.toolbar .rb-gallery { flex: 1 1 auto; min-width: 0; max-width: 600px; }
+.toolbar .rb-gallery .rb-tiles { display: flex; flex: 1 1 auto; min-width: 0; overflow: hidden; flex-wrap: wrap; height: 42px; }
+.toolbar .rb-gallery .rb-tile { flex: none; height: 42px; }
+.wr-doc .qi.qi-text { white-space: normal; }
+.toolbar .rb-gallery .rb-tile { flex: 1 0 100px; max-width: 150px; }
 
-/* --- agent review (the frames; the marks and cards are in shared/editor.css) */
-.page { position: relative; }
-.rv-layer { position: absolute; inset: 0; pointer-events: none; z-index: 2; }
-
-/* Editor tabs */
-.tabs-host { flex: none; }
+/* LaTeX's article class: the title in the text's serif, not bold, a size smaller than KOMA's. */
+.page.serif-headings .wr-doc .wr-titleblock .tb-title { font-weight: 400; font-size: 1.728em; }
+/* Labels and attributes ({#sec-x}, {width=50%}) are markup, like Word's bookmarks: shown with the
+   formatting marks (Home → ¶), hidden otherwise. */
+.page:not(.show-marks) .wr-doc .qi-attr { display: none; }

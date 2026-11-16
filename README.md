@@ -201,26 +201,33 @@ that turns Thunderbird into a workspace built around your agent.
   It has rectangle, lasso and polygon selection (cut, copy, delete, move),
   a resizable canvas, and the usual paint shortcuts while it has focus
   (<kbd>?</kbd> lists them).
-- **Writer space.** A word processor for papers in Quarto (`.qmd`, `.md`)
-  with a ribbon like ONLYOFFICE's or Word's:
-  - **Home:** styles, bold to small caps, super- and subscript, highlight,
-    lists, and Find and Replace (<kbd>Ctrl</kbd>+<kbd>F</kbd>/<kbd>H</kbd>).
-  - **Insert:** tables, figures, equations, symbols, footnotes, page breaks
-    and callouts.
-  - **Layout:** paper, orientation, margins, columns, font, size and line
-    spacing. The PDF and the Word export both follow them.
-  - **References:** citations from the `.bib` file, cross-references, the
-    citation style and a table of contents.
-  - **Review:**
-    - track changes and comments, both kept in Pandoc's form so the Word
-      export has them as Word's own;
-    - accept or reject from the panel beside the page;
-    - spelling and grammar (LanguageTool) and "Review with agent".
-  - **View:** line numbers, a page view with the document's page setup and
-    page ends, and zoom.
-  - **Export:** PDF, Word (with line numbers, if wanted) or a web page,
-    through Quarto. Formatting is written the Pandoc way, e.g.
-    `[text]{.underline}`, and untouched paragraphs are saved byte for byte.
+- **Writer space.** A word processor for papers in Quarto (`.qmd`, `.md`),
+  laid out like ONLYOFFICE's document editor: ribbon tabs, rulers, the
+  document on sheets of its paper, side panels and a status bar.
+  - **File:** create, open, save, a copy, print, Info (title, authors, date,
+    abstract and the Quarto header) and Download As: DOCX, PDF, ODT, MD, RTF,
+    TXT, FB2, EPUB and HTML, through Quarto.
+  - **Home:** font, size, case, bold to subscript, highlight and font colours,
+    lists, indents, alignment, line spacing, formatting marks, the style
+    gallery, and Find and Replace (<kbd>Ctrl</kbd>+<kbd>F</kbd>/<kbd>H</kbd>).
+  - **Insert:** page breaks, tables, images, comments, links, the date,
+    equations and symbols.
+  - **Layout:** margins, orientation, size, columns, line numbers
+    (continuous or per page) and the paragraph's indents and spacing. The
+    rulers drag margins and indents.
+  - **References:** table of contents, footnotes, bookmarks,
+    cross-references, citations and the bibliography. Citations and
+    cross-references read as in the PDF: "(Smith and Jones 2020)", "Figure 2".
+  - **Collaboration:** comments, track changes (kept in Pandoc's form, so the
+    Word export has them as Word's own), display modes, accept and reject,
+    "Review with agent" and spell checking (LanguageTool).
+  - **View:** headings, zoom and fit, and which bars show.
+  - A document without its own page settings is set as Word sets a new one
+    (A4, 2.5 cm margins, 12 pt Times New Roman or a metric twin), on the page
+    and in the PDF and Word file alike. Formatting Markdown has no syntax for
+    is written the Pandoc way (`[text]{.underline}`,
+    `[text]{style="color: #C00000"}`, `::: {style="text-align: center"}`),
+    which the exports honour; untouched paragraphs are saved byte for byte.
 - **Terminal.** <kbd>Ctrl</kbd>+<kbd>`</kbd> slides a terminal up over the
   window, with tabs and horizontal or vertical splits. The agent can open
   terminals and run commands in them; you see everything it types.

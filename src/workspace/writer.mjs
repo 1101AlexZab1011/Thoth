@@ -9,7 +9,8 @@ import { basename, delimiter, dirname, extname, isAbsolute, join, resolve } from
 import { appDirs, isMac, isWindows, killTree, program, spawnProgram } from "../platform.mjs";
 import { FsError } from "./writes.mjs";
 import { readZip, writeZip } from "./zip.mjs";
-import { layoutOf } from "../writer/layout.mjs";
+import { layoutOf, pdfSettings, LAYOUT_DEFAULTS } from "../writer/layout.mjs";
+import { stylesIn, parseStyle, PARAGRAPH_PROPS, TEXT_PROPS, toCm, toPt } from "../writer/styles.mjs";
 import YAML from "yaml";
 
 const QUARTO = program("quarto", "QUARTO");
@@ -152,19 +153,32 @@ export class Writer {
 
   /** ["--metadata-file", file] carrying what the document's settings need for `to`, or []. */
   async #renderArgs(full, to) {
-    const settings = documentSettings(await readFile(full, "utf8"));
+    const source = await readFile(full, "utf8");
+    const settings = documentSettings(source);
     const dir = join(this.cacheDir ?? join(homedir(), ".cache", "mail-workspace"), "render");
     await mkdir(dir, { recursive: true });
+    const put = async (name, text) => { const file = join(dir, name); await writeFile(file, text); return file; };
     const meta = await renderMetadata(settings, to, {
-      lineNumbersTex: async () => { const file = join(dir, "lineno.tex"); await writeFile(file, LINENO_TEX); return file; },
-      markupTex: async () => { const file = join(dir, "review-markup.tex"); await writeFile(file, MARKUP_TEX); return file; },
-      reviewFilter: async () => { const file = join(dir, "review.lua"); await writeFile(file, REVIEW_LUA); return file; },
+      lineNumbersTex: (mode) => put(mode === "page" ? "lineno-page.tex" : "lineno.tex", mode === "page" ? LINENO_PAGE_TEX : LINENO_TEX),
+      markupTex: () => put("review-markup.tex", MARKUP_TEX),
+      reviewFilter: () => put("review.lua", REVIEW_LUA),
+      formatTex: () => put("writer-format.tex", FORMAT_TEX),
+      formatFilter: () => put("writer-format.lua", FORMAT_LUA),
       referenceDocx: (options) => this.referenceDocx(dir, options),
-    }, { hasReview: REVIEW_SPANS.test(await readFile(full, "utf8")) });
+    }, { hasReview: REVIEW_SPANS.test(source), styles: FORMAT_SPANS.test(source) ? stylesIn(source) : null, defaultFont: await this.defaultFont() });
     if (!Object.keys(meta).length) return [];
     const file = join(dir, `${createHash("sha1").update(full).digest("hex").slice(0, 16)}.yml`);
     await writeFile(file, YAML.stringify(meta));
     return ["--metadata-file", file];
+  }
+
+  /** Times New Roman for the PDF when the system has it, else a metric twin (same line breaks), else none. */
+  async defaultFont() {
+    if (this.serif !== undefined) return this.serif;
+    if (isMac || isWindows) return (this.serif = "Times New Roman");
+    const families = await runCapture("fc-list", [":", "family"]).then((out) => out.toString()).catch(() => "");
+    this.serif = ["Times New Roman", "Liberation Serif", "TeX Gyre Termes"].find((name) => families.split("\n").some((line) => line.split(",").map((f) => f.trim()).includes(name))) ?? null;
+    return this.serif;
   }
 
   /** A Word template with the given page setup and fonts (cached by its options). */
@@ -304,7 +318,97 @@ export class Writer {
 
 export { layoutOf };
 
-const LINENO_TEX = "\\usepackage{lineno}\n\\linenumbers\n";
+// Numbers in the text's own size, as Word and the Writer show them (lineno's default is tiny).
+const LINENO_TEX = "\\usepackage{lineno}\n\\renewcommand\\linenumberfont{\\normalfont\\normalsize}\n\\linenumbers\n";
+const LINENO_PAGE_TEX = "\\usepackage[pagewise]{lineno}\n\\renewcommand\\linenumberfont{\\normalfont\\normalsize}\n\\linenumbers\n";
+// The Writer's formatting in LaTeX (writer-format.lua): a font by name (LuaLaTeX and XeLaTeX), a
+// background colour (lua-ul's highlight, else a box).
+const FORMAT_TEX = String.raw`\usepackage{xcolor}
+\newif\ifwrlua
+\ifdefined\directlua\IfFileExists{lua-ul.sty}{\wrluatrue}{}\fi
+\ifwrlua\usepackage{luacolor}\usepackage{lua-ul}\fi
+\newcommand{\wrbg}[2]{\begingroup\definecolor{wrbg}{HTML}{#1}\ifwrlua\highLight[wrbg]{#2}\else\colorbox{wrbg}{#2}\fi\endgroup}
+\newcommand{\wrfont}[2]{\ifdefined\fontspec{\fontspec{#1}#2}\else#2\fi}
+`;
+
+// Paragraph and character formatting (src/writer/styles.mjs) for LaTeX and Word: ::: {style="…"}
+// becomes a group with the alignment, indents, spacing and line spacing; [text]{style="…"} the font,
+// size and colours. For Word, each style becomes the named style the template defines (writer-styles).
+const FORMAT_LUA = String.raw`local named = { paragraphs = {}, spans = {} }
+
+local function read_meta(meta)
+  local ws = meta["writer-styles"]
+  if not ws then return end
+  for _, kind in ipairs({ "paragraphs", "spans" }) do
+    for _, item in ipairs(ws[kind] or {}) do
+      named[kind][pandoc.utils.stringify(item.css)] = pandoc.utils.stringify(item.name)
+    end
+  end
+end
+
+local function props(css)
+  local out = {}
+  for part in string.gmatch(css or "", "[^;]+") do
+    local k, v = string.match(part, "^%s*([%w-]+)%s*:%s*(.-)%s*$")
+    if k then out[string.lower(k)] = v end
+  end
+  return out
+end
+
+local function latex_div(el, p)
+  local before, after = {}, {}
+  if p["margin-top"] then table.insert(before, "\\vspace{" .. p["margin-top"] .. "}") end
+  table.insert(before, "\\begingroup")
+  local align = p["text-align"]
+  if align == "center" then table.insert(before, "\\centering")
+  elseif align == "right" then table.insert(before, "\\raggedleft")
+  elseif align == "left" then table.insert(before, "\\raggedright") end
+  if p["margin-left"] then table.insert(before, "\\addtolength{\\leftskip}{" .. p["margin-left"] .. "}") end
+  if p["margin-right"] then table.insert(before, "\\addtolength{\\rightskip}{" .. p["margin-right"] .. "}") end
+  -- As in CSS: the first line starts at the left indent plus this (a negative one hangs).
+  if p["text-indent"] then table.insert(before, "\\setlength{\\parindent}{" .. p["text-indent"] .. "}") end
+  if p["line-height"] then table.insert(before, "\\linespread{" .. p["line-height"] .. "}\\selectfont") end
+  table.insert(after, "\\par\\endgroup")
+  if p["margin-bottom"] then table.insert(after, "\\vspace{" .. p["margin-bottom"] .. "}") end
+  local out = { pandoc.RawBlock("latex", table.concat(before, " ")) }
+  for _, block in ipairs(el.content) do table.insert(out, block) end
+  table.insert(out, pandoc.RawBlock("latex", table.concat(after, " ")))
+  return out
+end
+
+local function latex_span(el, p)
+  local open, close = "", ""
+  if p["font-family"] then open = open .. "\\wrfont{" .. p["font-family"] .. "}{"; close = "}" .. close end
+  local size = tonumber(string.match(p["font-size"] or "", "^[%d.]+"))
+  if size then open = open .. string.format("{\\fontsize{%gpt}{%gpt}\\selectfont ", size, size * 1.2); close = "}" .. close end
+  if p["color"] then open = open .. "\\textcolor[HTML]{" .. string.upper(string.sub(p["color"], 2)) .. "}{"; close = "}" .. close end
+  if p["background-color"] then open = open .. "\\wrbg{" .. string.upper(string.sub(p["background-color"], 2)) .. "}{"; close = "}" .. close end
+  local out = { pandoc.RawInline("latex", open) }
+  for _, inline in ipairs(el.content) do table.insert(out, inline) end
+  table.insert(out, pandoc.RawInline("latex", close))
+  return out
+end
+
+local function styled(el, kind)
+  local css = el.attributes and el.attributes.style
+  if not css then return nil end
+  if FORMAT:match("latex") or FORMAT:match("beamer") then
+    return kind == "paragraphs" and latex_div(el, props(css)) or latex_span(el, props(css))
+  end
+  if FORMAT:match("docx") and named[kind][css] then
+    el.attributes.style = nil
+    el.attributes["custom-style"] = named[kind][css]
+    return el
+  end
+  return nil
+end
+
+return {
+  { Meta = read_meta },
+  { Div = function(el) return styled(el, "paragraphs") end, Span = function(el) return styled(el, "spans") end },
+}
+`;
+const FORMAT_SPANS = /\]\{\s*style\s*=|^ {0,3}:{3,}\s*\{\s*style\s*=/m;
 // \wrins and \wrdel with whatever the TeX installation has (lua-ul under LuaLaTeX, else ulem, else
 // colour alone), so a missing package never stops the render or starts an install.
 const MARKUP_TEX = String.raw`\usepackage{xcolor}
@@ -366,26 +470,60 @@ export function documentSettings(source) {
  *   the layout keys       a Word template with the same page and type (PDF reads them itself)
  * `make` builds the files: lineNumbersTex() and referenceDocx(options) resolve to paths.
  */
-export async function renderMetadata(settings, to, make, { hasReview = false } = {}) {
+export async function renderMetadata(settings, to, make, { hasReview = false, styles = null, defaultFont = null } = {}) {
   const writer = settings["writer-options"] && typeof settings["writer-options"] === "object" ? settings["writer-options"] : {};
-  const lineNumbers = writer["line-numbers"] === true;
+  const numbering = writer["line-numbers"];
+  const lineNumbers = numbering === true || numbering === "continuous" ? "continuous" : numbering === "page" ? "page" : false;
   const markup = writer.review === "markup";
   const latex = to === "pdf" || to === "latex" || to === "beamer";
   const meta = {};
   const headers = [];
-  if (latex && lineNumbers) headers.push({ file: await make.lineNumbersTex() });
+  if (latex && lineNumbers) headers.push({ file: await make.lineNumbersTex(lineNumbers) });
+  // A document that sets no page or type is set as the Writer shows it: A4, 2.5 cm margins, 12 pt
+  // Times New Roman (or its metric twin), as a new document in Word.
+  const effective = pdfSettings(settings);
+  if (to === "pdf" || to === "latex") {
+    if (effective.papersize === undefined) meta.papersize = LAYOUT_DEFAULTS.paper;
+    if (effective.geometry === undefined) meta.geometry = [`margin=${LAYOUT_DEFAULTS.margin}cm`];
+    if (effective.fontsize === undefined) meta.fontsize = `${LAYOUT_DEFAULTS.fontSize}pt`;
+    if (effective.mainfont === undefined && defaultFont) meta.mainfont = defaultFont;
+    // Headings and the title in the sans the page shows them in (KOMA sets them in sans).
+    const sans = { "Times New Roman": "Arial", "Liberation Serif": "Liberation Sans", "TeX Gyre Termes": "TeX Gyre Heros" }[defaultFont];
+    if (effective.mainfont === undefined && effective.sansfont === undefined && sans) meta.sansfont = sans;
+  }
+  // Paragraph and character formatting: LaTeX commands, or Word styles from the template.
+  const hasStyles = Boolean(styles && (styles.paragraphs.length || styles.spans.length));
+  if (hasStyles && (latex || to === "docx")) {
+    meta.filters = [...[].concat(settings.filters ?? []), await make.formatFilter()];
+    if (latex) headers.push({ file: await make.formatTex() });
+  }
   // Word keeps tracked changes and comments as its own; every other format gets the final text,
   // or the markup when the document asks for it.
   if (hasReview && to !== "docx") {
-    meta.filters = [...[].concat(settings.filters ?? []), await make.reviewFilter()];
+    meta.filters = [...(meta.filters ?? [].concat(settings.filters ?? [])), await make.reviewFilter()];
     meta["writer-review"] = markup ? "markup" : "final";
     if (latex && markup) headers.push({ file: await make.markupTex() });
   }
   if (headers.length) meta["include-in-header"] = [...[].concat(settings["include-in-header"] ?? []), ...headers];
   const ownReference = settings["reference-doc"] ?? settings.format?.docx?.["reference-doc"];
-  const layout = layoutOf(settings);
-  if (to === "docx" && !ownReference && (lineNumbers || Object.keys(layout).length)) {
-    meta["reference-doc"] = await make.referenceDocx({ lineNumbers, ...layout });
+  if (to === "docx") {
+    // Each formatting style gets a Word style of its own, named in order: Writer P1…, Writer C1….
+    const named = { paragraphs: [], spans: [] };
+    if (hasStyles) {
+      for (const [kind, prefix] of [["paragraphs", "Writer P"], ["spans", "Writer C"]]) {
+        const names = new Map();
+        for (const [, style] of styles[kind]) if (!names.has(style)) names.set(style, `${prefix}${names.size + 1}`);
+        named[kind] = styles[kind].map(([css, style]) => ({ css, name: names.get(style), style }));
+      }
+      meta["writer-styles"] = { paragraphs: named.paragraphs.map(({ css, name }) => ({ css, name })), spans: named.spans.map(({ css, name }) => ({ css, name })) };
+    }
+    if (!ownReference) {
+      const layout = { paper: LAYOUT_DEFAULTS.paper, margins: Object.fromEntries(["top", "right", "bottom", "left"].map((side) => [side, LAYOUT_DEFAULTS.margin])), font: LAYOUT_DEFAULTS.font, fontSize: LAYOUT_DEFAULTS.fontSize, ...layoutOf(settings) };
+      delete layout.serifHeadings;
+      const unique = (list) => [...new Map(list.map(({ name, style }) => [name, { name, style }])).values()];
+      const wordStyles = hasStyles ? { paragraphs: unique(named.paragraphs), spans: unique(named.spans) } : undefined;
+      meta["reference-doc"] = await make.referenceDocx({ lineNumbers, ...layout, ...(wordStyles ? { styles: wordStyles } : {}) });
+    }
   }
   return meta;
 }
@@ -395,7 +533,7 @@ const PAPER = { a4: [11906, 16838], letter: [12240, 15840] };
 const xmlAttr = (value) => String(value).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
 
 /** Pandoc's Word template with a page setup (section) and default type of our own. */
-export function patchReferenceDocx(buffer, { lineNumbers = false, paper, landscape, margins, columns, font, fontSize, lineSpacing } = {}) {
+export function patchReferenceDocx(buffer, { lineNumbers = false, paper, landscape, margins, columns, font, fontSize, lineSpacing, styles } = {}) {
   const entries = readZip(buffer);
   const patch = (name, fn) => { const e = entries.find((x) => x.name === name); if (e) e.data = Buffer.from(fn(e.data.toString("utf8")), "utf8"); };
   patch("word/document.xml", (xml) => {
@@ -403,7 +541,7 @@ export function patchReferenceDocx(buffer, { lineNumbers = false, paper, landsca
     const parts = ['<w:footnotePr><w:numRestart w:val="eachSect" /></w:footnotePr>'];
     if (paper || landscape) parts.push(landscape ? `<w:pgSz w:w="${h}" w:h="${w}" w:orient="landscape" />` : `<w:pgSz w:w="${w}" w:h="${h}" />`);
     if (margins) parts.push(`<w:pgMar w:top="${Math.round(margins.top * TWIPS_PER_CM)}" w:right="${Math.round(margins.right * TWIPS_PER_CM)}" w:bottom="${Math.round(margins.bottom * TWIPS_PER_CM)}" w:left="${Math.round(margins.left * TWIPS_PER_CM)}" w:header="708" w:footer="708" w:gutter="0" />`);
-    if (lineNumbers) parts.push('<w:lnNumType w:countBy="1" w:restart="continuous" />');
+    if (lineNumbers) parts.push(`<w:lnNumType w:countBy="1" w:restart="${lineNumbers === "page" ? "newPage" : "continuous"}" />`);
     if (columns > 1) parts.push(`<w:cols w:num="${columns}" w:space="708" />`);
     return xml.replace(/<w:sectPr>[\s\S]*?<\/w:sectPr>/, `<w:sectPr>${parts.join("")}</w:sectPr>`);
   });
@@ -412,9 +550,41 @@ export function patchReferenceDocx(buffer, { lineNumbers = false, paper, landsca
     if (font) out = out.replace(/<w:rFonts [^>]*\/>/, `<w:rFonts w:ascii="${xmlAttr(font)}" w:hAnsi="${xmlAttr(font)}" w:cs="${xmlAttr(font)}" w:eastAsiaTheme="minorEastAsia" />`);
     if (fontSize) out = out.replace(/<w:sz w:val="\d+" \/>\s*<w:szCs w:val="\d+" \/>/, `<w:sz w:val="${Math.round(fontSize * 2)}" /><w:szCs w:val="${Math.round(fontSize * 2)}" />`);
     if (lineSpacing) out = out.replace(/(<w:pPrDefault>\s*<w:pPr>\s*)<w:spacing ([^>]*?)\s*\/>/, `$1<w:spacing $2 w:line="${Math.round(240 * lineSpacing)}" w:lineRule="auto" />`);
+    if (styles) out = out.replace("</w:styles>", `${wordStyles(styles)}</w:styles>`);
     return out;
   });
   return writeZip(entries);
+}
+
+const twips = (value) => Math.round((toPt(value) ?? 0) * 20);
+const styleId = (name) => name.replace(/[^A-Za-z0-9]/g, "");
+
+/** Word styles for the Writer's formatting: paragraph styles based on Body Text, character styles. */
+function wordStyles({ paragraphs = [], spans = [] }) {
+  const out = [];
+  for (const { name, style } of paragraphs) {
+    const p = parseStyle(style, PARAGRAPH_PROPS) ?? {};
+    const spacing = [];
+    if (p["margin-top"]) spacing.push(`w:before="${twips(p["margin-top"])}"`);
+    if (p["margin-bottom"]) spacing.push(`w:after="${twips(p["margin-bottom"])}"`);
+    if (p["line-height"]) spacing.push(`w:line="${Math.round(240 * Number(p["line-height"]))}" w:lineRule="auto"`);
+    const ind = [];
+    if (p["margin-left"]) ind.push(`w:left="${twips(p["margin-left"])}"`);
+    if (p["margin-right"]) ind.push(`w:right="${twips(p["margin-right"])}"`);
+    if (p["text-indent"]) { const t = twips(p["text-indent"]); ind.push(t < 0 ? `w:hanging="${-t}"` : `w:firstLine="${t}"`); }
+    const jc = { left: "left", center: "center", right: "right", justify: "both" }[p["text-align"]];
+    const ppr = `${spacing.length ? `<w:spacing ${spacing.join(" ")} />` : ""}${ind.length ? `<w:ind ${ind.join(" ")} />` : ""}${jc ? `<w:jc w:val="${jc}" />` : ""}`;
+    out.push(`<w:style w:type="paragraph" w:customStyle="1" w:styleId="${styleId(name)}"><w:name w:val="${xmlAttr(name)}" /><w:basedOn w:val="BodyText" /><w:qFormat /><w:pPr>${ppr}</w:pPr></w:style>`);
+  }
+  for (const { name, style } of spans) {
+    const p = parseStyle(style, TEXT_PROPS) ?? {};
+    const font = p["font-family"] ? `<w:rFonts w:ascii="${xmlAttr(p["font-family"])}" w:hAnsi="${xmlAttr(p["font-family"])}" w:cs="${xmlAttr(p["font-family"])}" />` : "";
+    const color = p.color ? `<w:color w:val="${p.color.slice(1)}" />` : "";
+    const size = p["font-size"] ? `<w:sz w:val="${Math.round(Number.parseFloat(p["font-size"]) * 2)}" /><w:szCs w:val="${Math.round(Number.parseFloat(p["font-size"]) * 2)}" />` : "";
+    const shading = p["background-color"] ? `<w:shd w:val="clear" w:color="auto" w:fill="${p["background-color"].slice(1)}" />` : "";
+    out.push(`<w:style w:type="character" w:customStyle="1" w:styleId="${styleId(name)}"><w:name w:val="${xmlAttr(name)}" /><w:basedOn w:val="DefaultParagraphFont" /><w:rPr>${font}${color}${size}${shading}</w:rPr></w:style>`);
+  }
+  return out.join("");
 }
 
 /** Run a command and resolve to its standard output (a Buffer). */

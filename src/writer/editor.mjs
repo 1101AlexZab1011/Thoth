@@ -21,10 +21,12 @@ import { ReplaceStep } from "@milkdown/kit/prose/transform";
 import { Fragment, Slice } from "@milkdown/kit/prose/model";
 import { EditorState, Plugin, PluginKey, TextSelection } from "@milkdown/kit/prose/state";
 import { Decoration, DecorationSet } from "@milkdown/kit/prose/view";
+import { undoDepth, redoDepth } from "@milkdown/kit/prose/history";
 import remarkMath from "remark-math";
 import YAML from "yaml";
 import { assemble, gapsOf, inlineTokens, splitQuarto } from "./quarto.mjs";
 import { pandocInlines, pandocHandlers, parseAttrs, formatAttrs } from "./pandoc.mjs";
+import { PARAGRAPH_PROPS, TEXT_PROPS, parseStyle, formatStyle, mergeStyle, formatFence, spanStyle } from "./styles.mjs";
 import { notesTokens } from "../notes/vault.mjs";
 import { notesPlugins, notesApi } from "../notes/editor-notes.mjs";
 
@@ -203,10 +205,91 @@ const formatMarks = [
   spanMark("pandoc_span", ["span", "comment-start", "comment-end"], { tag: "span", cls: "wr-span", attrs: "{}", title: (attrs) => attrs }),
   spanMark("insertion", "insertion", { tag: "ins", cls: "wr-insertion", attrs: "{.insertion}", title: changeTitle("Inserted"), style: changeStyle, spec: { excludes: "deletion" } }),
   spanMark("deletion", "deletion", { tag: "del", cls: "wr-deletion", attrs: "{.deletion}", title: changeTitle("Deleted"), style: changeStyle, spec: { excludes: "insertion", inclusive: false } }),
+  // Font, size and colours: [text]{style="font-size: 14pt; color: #C00000"} (styles.mjs).
+  spanMark("textstyle", "textstyle", { tag: "span", cls: "wr-style", attrs: "{}", style: (attrs) => spanStyle(attrs) ?? "" }),
   scriptMark("superscript", "sup"),
   scriptMark("subscript", "sub"),
   commentMark,
 ];
+
+// ---------------------------------------------------- paragraph formatting --
+//
+// A paragraph or heading may carry `pstyle`: alignment, indents, spacing and line spacing as CSS
+// (styles.mjs). The file keeps it as a fenced div around the block, ::: {style="…"}, which build()
+// reads into the attribute and serializeNodes() writes back.
+
+/** The CSS the editor draws a paragraph style with; line spacing is relative to the page's leading. */
+function paragraphCss(pstyle) {
+  const props = parseStyle(pstyle, PARAGRAPH_PROPS) ?? {};
+  return Object.entries(props).map(([prop, value]) => (prop === "line-height" ? `line-height: calc(var(--pv-base-leading, 1.2) * ${value})` : `${prop}: ${value}`)).join("; ");
+}
+
+function withParagraphStyle(nodeSchema) {
+  return nodeSchema.extendSchema((prev) => (ctx) => {
+    const base = prev(ctx);
+    return {
+      ...base,
+      attrs: { ...(base.attrs ?? {}), pstyle: { default: "" } },
+      parseDOM: base.parseDOM.map((rule) => ({
+        ...rule,
+        getAttrs: (dom) => {
+          const attrs = rule.getAttrs ? rule.getAttrs(dom) : {};
+          if (attrs === false) return false;
+          return { ...(attrs ?? {}), pstyle: formatStyle(parseStyle(dom.dataset?.pstyle ?? "", PARAGRAPH_PROPS) ?? {}, PARAGRAPH_PROPS) };
+        },
+      })),
+      toDOM: (node) => {
+        const [tag, attrs, ...rest] = base.toDOM(node);
+        if (!node.attrs.pstyle) return [tag, attrs, ...rest];
+        return [tag, { ...attrs, "data-pstyle": node.attrs.pstyle, style: paragraphCss(node.attrs.pstyle) }, ...rest];
+      },
+    };
+  });
+}
+const styledParagraph = withParagraphStyle(cm.paragraphSchema);
+const styledHeading = withParagraphStyle(cm.headingSchema);
+const STYLED = new Set(["paragraph", "heading"]);
+
+/** Enter at the end of a formatted paragraph starts one formatted the same way, as in Word. */
+const keepStylePlugin = $prose(() => new Plugin({
+  appendTransaction(transactions, oldState, state) {
+    if (!transactions.some((tr) => tr.docChanged) || transactions.some((tr) => tr.getMeta("uiEvent") === "paste")) return null;
+    if (state.doc.childCount !== oldState.doc.childCount + 1) return null;
+    const { $from, empty } = state.selection;
+    if (!empty || $from.depth !== 1 || $from.parent.type.name !== "paragraph" || $from.parent.content.size || $from.parent.attrs.pstyle) return null;
+    const index = $from.index(0);
+    const before = index > 0 ? state.doc.child(index - 1) : null;
+    if (before?.type.name !== "paragraph" || !before.attrs.pstyle) return null;
+    return state.tr.setNodeMarkup($from.before(1), undefined, { ...$from.parent.attrs, pstyle: before.attrs.pstyle });
+  },
+}));
+
+// ------------------------------------------------------------- page breaks --
+//
+// The page view (thunderbird-addon/writer-pages.js) measures the blocks and asks for gaps before the
+// blocks that start a new page; the gaps are widgets of the height that takes the block to the next
+// sheet. They are not part of the document.
+
+const pagesKey = new PluginKey("writer-pages");
+const pagesPlugin = $prose(() => new Plugin({
+  key: pagesKey,
+  state: {
+    init: () => DecorationSet.empty,
+    apply(tr, set) {
+      const gaps = tr.getMeta(pagesKey);
+      if (!gaps) return set.map(tr.mapping, tr.doc);
+      return DecorationSet.create(tr.doc, gaps.map(({ pos, height, page }) => Decoration.widget(pos, () => {
+        const el = document.createElement("div");
+        el.className = "pv-gap";
+        el.contentEditable = "false";
+        el.style.height = `${height}px`;
+        el.dataset.page = String(page);
+        return el;
+      }, { side: -1, key: `gap-${page}-${Math.round(height * 10)}`, ignoreSelection: true, height })));
+    },
+  },
+  props: { decorations: (state) => pagesKey.getState(state) },
+}));
 
 // ----------------------------------------------------------- node views --
 
@@ -283,12 +366,7 @@ function blockView(hooks) {
         dom.append(body);
         if (current.attrs.label) { const chip = document.createElement("span"); chip.className = "qb-eqlabel"; chip.textContent = `(${current.attrs.label})`; dom.append(chip); }
       } else if (kind === "frontmatter") {
-        const title = /^title:\s*["']?(.*?)["']?\s*$/m.exec(source)?.[1] ?? "";
-        dom.append(header(false));
-        const summary = document.createElement("div");
-        summary.className = "qb-summary";
-        summary.textContent = title ? title : `${source.split("\n").length - 2} settings`;
-        dom.append(summary);
+        drawTitleBlock(dom, source, hooks);
       } else if (kind === "code" && /^database\b/.test(current.attrs.label) && hooks.renderDatabase) {
         const body = document.createElement("div");
         body.className = "qb-database";
@@ -306,17 +384,69 @@ function blockView(hooks) {
       }
     };
 
-    dom.addEventListener("click", (event) => { if (!editing && !event.defaultPrevented && !event.target.closest?.(".qb-database")) edit(); });
+    dom.addEventListener("click", (event) => { if (!editing && !event.defaultPrevented && current.attrs.kind !== "frontmatter" && !event.target.closest?.(".qb-database")) edit(); });
     draw();
     return {
       dom,
       update: (next) => { if (next.type !== current.type) return false; current = next; if (!editing) draw(); return true; },
-      stopEvent: (event) => editing && event.target instanceof HTMLTextAreaElement,
+      stopEvent: (event) => (editing && event.target instanceof HTMLTextAreaElement) || Boolean(event.target.closest?.(".tb-field")),
       ignoreMutation: () => true,
       selectNode: () => dom.classList.add("selected"),
       deselectNode: () => dom.classList.remove("selected"),
     };
   };
+}
+
+// The title block, drawn as the PDF sets it (title, subtitle, authors, date, abstract) from the
+// header; the header's other keys are settings and stay out of the page. A field that is plain text
+// in the header is edited in place.
+const TITLE_FIELDS = ["title", "subtitle", "author", "date", "abstract"];
+
+/** A header value as text, and whether it can be edited as text (plain strings and lists of them). */
+function fieldText(key, value) {
+  if (value === undefined || value === null) return { text: "", plain: true };
+  if (key === "author") {
+    const list = [].concat(value);
+    const names = list.map((a) => (typeof a === "string" ? a : typeof a?.name === "string" ? a.name : a?.name?.literal ?? [a?.name?.given, a?.name?.family].filter(Boolean).join(" ")));
+    return { text: names.filter(Boolean).join(", "), plain: list.every((a) => typeof a === "string") };
+  }
+  if (typeof value === "string") return { text: value, plain: true };
+  if (value instanceof Date) return { text: value.toISOString().slice(0, 10), plain: false };
+  return { text: String(value), plain: typeof value !== "object" };
+}
+
+function drawTitleBlock(dom, source, hooks) {
+  let meta = {};
+  try { meta = YAML.parse(source.replace(/^---\s*\n|\n(---|\.\.\.)\s*$/g, "")) ?? {}; } catch { meta = {}; }
+  const shown = TITLE_FIELDS.filter((key) => fieldText(key, meta[key]).text);
+  dom.className = `qb qb-frontmatter wr-titleblock${shown.length ? "" : " empty"}`;
+  for (const key of shown) {
+    const { text, plain } = fieldText(key, meta[key]);
+    const row = document.createElement("div");
+    row.className = `tb-${key}`;
+    if (key === "abstract") { const head = document.createElement("div"); head.className = "tb-abstract-head"; head.textContent = "Abstract"; row.append(head); }
+    const field = document.createElement("div");
+    field.className = "tb-field";
+    field.textContent = text;
+    if (plain && hooks.setSettings) {
+      field.contentEditable = "true";
+      field.spellcheck = true;
+      field.title = `Click to edit the ${key}`;
+      const commit = () => {
+        const value = field.textContent.replace(/\s+/g, " ").trim();
+        if (value === text) return;
+        hooks.setSettings({ [key]: key === "author" && Array.isArray(meta.author) ? value.split(/\s*,\s*/).filter(Boolean) : value || null });
+      };
+      field.addEventListener("keydown", (event) => {
+        event.stopPropagation();
+        if (event.key === "Enter" && key !== "abstract") { event.preventDefault(); field.blur(); }
+        if (event.key === "Escape") { field.textContent = text; field.blur(); }
+      });
+      field.addEventListener("blur", commit);
+    } else field.title = "Edit in File → Info";
+    row.append(field);
+    dom.append(row);
+  }
 }
 
 function divTitle(source) {
@@ -337,10 +467,12 @@ export function parseWikilink(source) {
 
 const INLINE_ICON = { cite: "📖", crossref: "#", attr: "", shortcode: "⟨⟩", math: "", span: "", raw: "" };
 
-function inlineView(hooks) {
+function inlineView(hooks, registry) {
   return (node, view, getPos) => {
     const dom = document.createElement("span");
     let current = node;
+    const entry = { redraw: () => draw() };
+    registry?.add(entry);
     const draw = () => {
       const { kind, source } = current.attrs;
       dom.className = `qi qi-${kind}`;
@@ -362,7 +494,12 @@ function inlineView(hooks) {
       if (kind === "cite") dom.textContent = source.replace(/^\[|\]$/g, "");
       else dom.textContent = source;
       dom.title = kind === "cite" ? "Citation · click to edit" : kind === "crossref" ? "Cross-reference · click to edit" : "Click to edit";
-      if (kind === "cite" || kind === "crossref") hooks.describeInline?.(current.attrs, dom);
+      if (kind === "cite" || kind === "crossref") {
+        // As the reader will see it: "(Hafting et al., 2005)", "Figure 2".
+        const text = hooks.inlineText?.(current.attrs);
+        if (text) { dom.textContent = text; dom.classList.add("qi-text"); }
+        hooks.describeInline?.(current.attrs, dom);
+      }
     };
     dom.contentEditable = "false";
     dom.addEventListener("click", async (event) => {
@@ -376,7 +513,7 @@ function inlineView(hooks) {
       view.dispatch(view.state.tr.setNodeMarkup(pos, undefined, { ...current.attrs, source: next }));
     });
     draw();
-    return { dom, update: (next) => { if (next.type !== current.type) return false; current = next; draw(); return true; }, ignoreMutation: () => true };
+    return { dom, update: (next) => { if (next.type !== current.type) return false; current = next; draw(); return true; }, ignoreMutation: () => true, destroy: () => registry?.delete(entry) };
   };
 }
 
@@ -613,6 +750,7 @@ const reviewPlugin = $prose(() => new Plugin({
  *   onSlash(state|null), onSlashKey(key, event) → true if handled, onBlockMenu({ pos, node, rect }), onAddBlock({ pos, node })
  */
 export async function createWriter(root, hooks = {}, options = {}) {
+  const inlineViews = new Set();
   const notes = options.mode === "notes";
   const notesLayer = notes ? notesPlugins(hooks) : { plugins: [], config: () => {} };
   const editor = await Editor.make()
@@ -628,6 +766,8 @@ export async function createWriter(root, hooks = {}, options = {}) {
       ctx.get(listenerCtx).selectionUpdated(() => hooks.onSelection?.());
     })
     .use(commonmark)
+    .use(styledParagraph)
+    .use(styledHeading)
     .use(gfm)
     .use(history)
     .use(clipboard)
@@ -637,13 +777,15 @@ export async function createWriter(root, hooks = {}, options = {}) {
     .use(quartoBlock)
     .use(quartoInline)
     .use(formatMarks)
-    .use($view(quartoBlock, () => blockView(hooks)))
-    .use($view(quartoInline, () => inlineView(hooks)))
+    .use($view(quartoBlock, () => blockView({ ...hooks, setSettings: (changes) => api.setSettings(changes) })))
+    .use($view(quartoInline, () => inlineView(hooks, inlineViews)))
     .use($view(imageSchema.node, () => imageView(hooks)))
     .use(grammarPlugin)
     .use(findPlugin)
     .use(trackPlugin)
     .use(reviewPlugin)
+    .use(keepStylePlugin)
+    .use(pagesPlugin)
     .use(notesLayer.plugins.flat())
     .create();
 
@@ -659,14 +801,42 @@ export async function createWriter(root, hooks = {}, options = {}) {
   // Notes writes plain Markdown: a callout's [!type] is not escaped, and empty paragraphs (Milkdown's
   // "<br />" placeholder) are left out instead of written as HTML.
   const tidy = notes ? (md) => md.replace(/^((?:> ?)+)\\\[!([\w-]+)\]/gm, "$1[!$2]").replace(/^<br \/>\n(\n|$)/gm, "") : (md) => md;
-  const serializeNodes = (nodes) => tidy(stringify(schema.topNodeType.create(null, nodes)));
+  // Formatted paragraphs (pstyle) are written inside a fenced div; neighbours with the same format share one.
+  const serializeNodes = (nodes) => {
+    const out = [];
+    for (let i = 0; i < nodes.length;) {
+      const style = nodes[i].attrs?.pstyle || "";
+      let j = i;
+      while (j < nodes.length && (nodes[j].attrs?.pstyle || "") === style) j++;
+      const group = nodes.slice(i, j).map((n) => (style ? n.type.create({ ...n.attrs, pstyle: "" }, n.content, n.marks) : n));
+      const md = tidy(stringify(schema.topNodeType.create(null, group))).replace(/\n+$/, "");
+      if (md || style) out.push(style ? `::: {style="${style}"}\n${md}\n:::` : md);
+      i = j;
+    }
+    return out.length ? `${out.join("\n\n")}\n` : "";
+  };
   const own = (node) => (node.type.name === "quarto_block" ? node.attrs.source : null);
   const current = () => { const out = []; view.state.doc.forEach((n) => out.push(n)); return out; };
 
   /** Parse a document into nodes and units (see the module comment). */
   function build(source) {
     const units = [];
-    for (const segment of splitQuarto(source)) {
+    const segments = splitQuarto(source);
+    for (let s = 0; s < segments.length; s++) {
+      const segment = segments[s];
+      // ::: {style="…"} around paragraphs and headings: the blocks, formatted (one unit, fences included).
+      const fence = segment.kind === "div" ? formatFence(segment.text) : null;
+      const body = segments[s + 1];
+      const close = segments[s + 2];
+      if (fence && body?.kind === "markdown" && close?.kind === "div" && /^\s*:{3,}\s*$/.test(close.text)) {
+        const nodes = [];
+        parse(body.text).forEach((n) => nodes.push(n));
+        if (nodes.length && nodes.every((n) => STYLED.has(n.type.name))) {
+          units.push({ kind: "markdown", start: segment.start, end: close.end, text: source.slice(segment.start, close.end), nodes: nodes.map((n) => n.type.create({ ...n.attrs, pstyle: fence.style }, n.content, n.marks)) });
+          s += 2;
+          continue;
+        }
+      }
       if (segment.kind !== "markdown") {
         units.push({ ...segment, nodes: [schema.nodes.quarto_block.create({ kind: segment.kind, label: segment.label ?? "", source: segment.text })] });
         continue;
@@ -757,7 +927,6 @@ export async function createWriter(root, hooks = {}, options = {}) {
       const out = [];
       view.state.doc.forEach((node, pos, index) => {
         if (node.type.name === "heading") out.push({ level: node.attrs.level, text: node.textContent.replace(/\s*\{[#.][^}]*\}\s*$/, "").trim(), pos, index });
-        if (node.type.name === "quarto_block" && node.attrs.kind === "frontmatter") out.push({ level: 0, text: "Document settings", pos, index });
       });
       return out;
     },
@@ -879,7 +1048,89 @@ export async function createWriter(root, hooks = {}, options = {}) {
         if (name === "blockquote") { block = "quote"; break; }
         if (name === "bullet_list" || name === "ordered_list") { block = name === "bullet_list" ? "bullet" : "ordered"; break; }
       }
-      return { marks, block };
+      const top = $from.depth ? $from.node(1) : null;
+      const textstyle = schema.marks.textstyle.isInSet(empty ? state.storedMarks ?? $from.marks() : $from.marks());
+      return {
+        marks,
+        block,
+        paragraph: parseStyle(top?.attrs?.pstyle ?? "", PARAGRAPH_PROPS) ?? {},
+        text: parseStyle(spanStyle(textstyle?.attrs.attrs) ?? "", TEXT_PROPS) ?? {},
+      };
+    },
+
+    // --- paragraph and character formatting (styles.mjs) -------------------------
+
+    /**
+     * Format the paragraphs and headings the selection touches (top-level ones: list items and
+     * quotes cannot carry it): { "text-align": "center", "margin-top": "12pt", … }; null removes
+     * a property. Returns how many blocks changed.
+     */
+    setParagraphStyle(changes) {
+      const { from, to, empty } = view.state.selection;
+      const tr = view.state.tr;
+      view.state.doc.forEach((node, pos) => {
+        const end = pos + node.nodeSize;
+        const touches = empty ? from > pos && from < end : from < end && to > pos;
+        if (!touches || !STYLED.has(node.type.name)) return;
+        const pstyle = mergeStyle(node.attrs.pstyle, changes, PARAGRAPH_PROPS);
+        if (pstyle !== node.attrs.pstyle) tr.setNodeMarkup(pos, undefined, { ...node.attrs, pstyle });
+      });
+      if (!tr.docChanged) return 0;
+      view.dispatch(tr);
+      return tr.steps.length;
+    },
+
+    /**
+     * Character formatting on the selection (or for what is typed next): { "font-size": "14pt",
+     * color: "#C00000", "font-family": "Arial", "background-color": … }; null removes a property.
+     */
+    setTextStyle(changes) {
+      const { state } = view;
+      const { from, to, empty, $from } = state.selection;
+      const type = schema.marks.textstyle;
+      const styled = (attrs) => {
+        const css = mergeStyle(spanStyle(attrs) ?? "", changes, TEXT_PROPS);
+        return css ? type.create({ attrs: `{style="${css}"}` }) : null;
+      };
+      if (empty) {
+        const marks = state.storedMarks ?? $from.marks();
+        const mark = styled(type.isInSet(marks)?.attrs.attrs);
+        view.dispatch(state.tr.setStoredMarks([...marks.filter((m) => m.type !== type), ...(mark ? [mark] : [])]));
+        return;
+      }
+      const tr = state.tr;
+      state.doc.nodesBetween(from, to, (node, pos) => {
+        if (!node.isInline) return true;
+        const start = Math.max(from, pos);
+        const end = Math.min(to, pos + node.nodeSize);
+        const mark = styled(type.isInSet(node.marks)?.attrs.attrs);
+        tr.removeMark(start, end, type);
+        if (mark) tr.addMark(start, end, mark);
+        return false;
+      });
+      if (tr.docChanged) view.dispatch(tr);
+    },
+
+    /** Whether Undo and Redo have anything to do (the ribbon greys them out otherwise). */
+    canUndo: () => undoDepth(view.state) > 0,
+    canRedo: () => redoDepth(view.state) > 0,
+
+    /** Draw citations and cross-references again (the bibliography or the labels changed). */
+    redrawInlines() { for (const entry of inlineViews) entry.redraw(); },
+
+    /** The top-level blocks with their elements, for measuring pages: [{ pos, dom, node }]. */
+    topBlocks() {
+      const out = [];
+      view.state.doc.forEach((node, pos) => { const dom = view.nodeDOM(pos); if (dom?.nodeType === 1) out.push({ pos, dom, node }); });
+      return out;
+    },
+
+    /** Gaps that start pages: [{ pos, height, page }] before the blocks at `pos` (see pagesPlugin). */
+    setPageGaps(gaps) {
+      view.dispatch(view.state.tr.setMeta(pagesKey, gaps).setMeta("addToHistory", false));
+    },
+    pageGaps() {
+      return pagesKey.getState(view.state).find().map((d) => ({ pos: d.from, height: d.spec.height }));
     },
 
     /** Plain text of the visible textblocks, for grammar checking: { text, map } per block. */
@@ -1072,6 +1323,31 @@ export async function createWriter(root, hooks = {}, options = {}) {
       try { return YAML.parse(first.attrs.source.replace(/^---\s*\n|\n(---|\.\.\.)\s*$/g, "")) ?? {}; } catch { return {}; }
     },
 
+    /** The header's YAML text, without its --- lines ("" without one). */
+    header() {
+      const first = view.state.doc.firstChild;
+      if (first?.type.name !== "quarto_block" || first.attrs.kind !== "frontmatter") return "";
+      return first.attrs.source.replace(/^---\s*\n/, "").replace(/\n?(---|\.\.\.)\s*$/, "");
+    },
+
+    /** Replace the header's YAML text (empty removes the header). False when it does not parse. */
+    setHeader(text) {
+      const body = String(text ?? "").replace(/\s+$/, "");
+      if (body) {
+        const yaml = YAML.parseDocument(body);
+        if (yaml.errors.length || (yaml.contents && !YAML.isMap(yaml.contents))) return false;
+      }
+      const first = view.state.doc.firstChild;
+      const has = first?.type.name === "quarto_block" && first.attrs.kind === "frontmatter";
+      const source = body ? `---\n${body}\n---` : "";
+      const tr = view.state.tr;
+      if (has && source) tr.setNodeMarkup(0, undefined, { ...first.attrs, source });
+      else if (has) tr.delete(0, first.nodeSize);
+      else if (source) tr.insert(0, schema.nodes.quarto_block.create({ kind: "frontmatter", label: "", source }));
+      if (tr.docChanged) view.dispatch(tr);
+      return true;
+    },
+
     /**
      * Change header keys: { key: value } or { "a.b": value } for nested keys; null/undefined
      * removes one. Comments and the order of other keys are kept. Returns false if the header does not parse.
@@ -1235,7 +1511,7 @@ function firstDifference(a, b) {
 }
 
 // The page uses these too (merging on conflicts, cross-reference autocomplete, the page view).
-export { layoutOf, paperSize } from "./layout.mjs";
+export { layoutOf, paperSize, layoutKey, pdfSettings, LAYOUT_DEFAULTS } from "./layout.mjs";
 export { merge3, labels, splitQuarto } from "./quarto.mjs";
 // The Notes page edits front matter and parses [[links]] with the vault model.
 export { splitPage, setProperties, wikilinks } from "../notes/vault.mjs";

@@ -1,11 +1,15 @@
-// Line numbers in the Writer's left margin, the way Word and ONLYOFFICE count them: every line of
-// text on the page, headings and code included, numbered from the top. The numbers follow the
-// editor's line breaks, which differ from the PDF's and the Word file's (other fonts and widths);
-// those get their own numbers from the export (Layout → Line numbers).
+// Line numbers in the page's left margin, as Word and ONLYOFFICE draw them: in the document's own
+// font and size, right-aligned a little left of the text, counting every line of text (headings and
+// code included) continuously or from 1 on each page (Layout → Line numbers). The numbers follow the
+// editor's line breaks, which differ from the PDF's and the Word file's; those number their own.
 import { h } from "./shared/page.js";
 
-// Interface text inside kept blocks (their header bars, the settings summary) is not document text.
-const SKIP = ".katex-mathml, .qb-bar, .qb-summary, .qb-eqlabel, .qb-frontmatter, .qi-pagebreak, [hidden]";
+// Interface text inside kept blocks (their header bars) and page breaks are not numbered; the title
+// block is, as the PDF numbers it.
+const SKIP = ".katex-mathml, .qb-bar, .qb-eqlabel, .qi-pagebreak, .pv-gap, [hidden]";
+const PX_PER_CM = 96 / 2.54;
+// Word's "From text: Auto" is a quarter inch.
+const FROM_TEXT = 0.635 * PX_PER_CM;
 
 /** Line boxes of the text under `root`: [{ top, bottom }] in client coordinates, top to bottom. */
 export function textLines(root) {
@@ -32,42 +36,51 @@ export function textLines(root) {
   return lines;
 }
 
-export function createLineNumbers({ page, getRoot, getZoom }) {
+export function createLineNumbers({ page, getRoot, getZoom, getLeft, getPitch }) {
   const layer = h("div.ln-layer", { "aria-hidden": "true" });
   page.append(layer);
-  let on = false;
+  let mode = "none"; // none | continuous | page
   let queued = false;
   const observer = new ResizeObserver(() => schedule());
 
   function draw() {
     queued = false;
     const root = getRoot();
-    if (!on || !root || page.hidden) { layer.replaceChildren(); return; }
+    if (mode === "none" || !root || page.hidden) { layer.replaceChildren(); return; }
     const zoom = getZoom();
     const base = page.getBoundingClientRect();
-    layer.replaceChildren(...textLines(root).map((line, k) => h("div.ln", {
-      style: { top: `${(line.top - base.top) / zoom}px`, height: `${(line.bottom - line.top) / zoom}px`, lineHeight: `${(line.bottom - line.top) / zoom}px` },
-    }, String(k + 1))));
+    const right = getLeft() - FROM_TEXT;
+    const pitch = getPitch();
+    let n = 0;
+    let sheet = 0;
+    layer.replaceChildren(...textLines(root).map((line) => {
+      const top = (line.top - base.top) / zoom;
+      const height = (line.bottom - line.top) / zoom;
+      const onSheet = Math.floor(top / pitch);
+      if (mode === "page" && onSheet !== sheet) { sheet = onSheet; n = 0; }
+      n++;
+      return h("div.ln", { style: { top: `${top}px`, height: `${height}px`, lineHeight: `${height}px`, left: `${right - 40}px` } }, String(n));
+    }));
   }
 
   function schedule() {
-    if (!on || queued) return;
+    if (mode === "none" || queued) return;
     queued = true;
     requestAnimationFrame(draw);
   }
 
   return {
-    get on() { return on; },
+    get on() { return mode !== "none"; },
+    get mode() { return mode; },
     set(value) {
-      on = Boolean(value);
-      page.classList.toggle("with-line-numbers", on);
+      mode = value === true ? "continuous" : ["continuous", "page"].includes(value) ? value : "none";
       observer.disconnect();
-      if (on && getRoot()) observer.observe(getRoot());
-      if (on) schedule(); else layer.replaceChildren();
+      if (mode !== "none" && getRoot()) observer.observe(getRoot());
+      if (mode !== "none") schedule(); else layer.replaceChildren();
     },
     /** The text or the layout changed. */
     schedule,
     /** Another document is shown. */
-    follow() { observer.disconnect(); if (on && getRoot()) { observer.observe(getRoot()); schedule(); } },
+    follow() { observer.disconnect(); if (mode !== "none" && getRoot()) { observer.observe(getRoot()); schedule(); } },
   };
 }

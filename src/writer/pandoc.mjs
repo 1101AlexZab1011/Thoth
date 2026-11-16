@@ -5,12 +5,15 @@
 //                   in a block's inline content and turns them into pandocSpan / superscript /
 //                   subscript nodes, whose children stay ordinary Markdown inlines.
 //   spanKind        what a span is to the editor: underline, highlight, smallcaps, insertion,
-//                   deletion, comment-start, comment-end, or a plain span that keeps its attributes.
+//                   deletion, comment-start, comment-end, textstyle (font, size, colours: styles.mjs),
+//                   or a plain span that keeps its attributes.
 //   pandocHandlers  remark-stringify handlers that write those nodes back.
 //
 // A span keeps its attribute text verbatim, so an edited paragraph writes the same {…} it read.
 // Blocks with backslash escapes of [ ] ^ ~ are left alone: the parser has already dropped the
 // backslashes, and reading them as syntax would change what the author wrote.
+
+import { spanStyle } from "./styles.mjs";
 
 const CLOSE = /\]\{((?:[^{}"'\n]|"[^"\n]*"|'[^'\n]*')*)\}/g;
 const ATTR = /\s*(?:#[\w:.-]+|\.[\w:-]+|[\w:-]+=(?:"[^"\n]*"|'[^'\n]*'|[^\s"'{}]+))/y;
@@ -63,6 +66,7 @@ export function spanKind(attrs) {
   if (classes.includes("comment-start")) return "comment-start";
   if (classes.includes("comment-end")) return "comment-end";
   if (!id && classes.length === 1 && !Object.keys(attributes).length && SIMPLE[classes[0]]) return SIMPLE[classes[0]];
+  if (spanStyle(attrs)) return "textstyle";
   return "span";
 }
 
