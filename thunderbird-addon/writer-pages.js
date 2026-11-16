@@ -200,6 +200,8 @@ export function createPageView({ page, getEditor, getZoom, getLayout, getRunning
       while (index + 1 < starts.length && starts[index + 1] <= y) index++;
       return { page: index + 1, pages: starts.length };
     },
+    /** The tops of all sheets in client coordinates. */
+    sheetTops() { const top = page.getBoundingClientRect().top; return starts.map((y) => top + y * getZoom()); },
     /** The top of sheet `n` (1-based) in client coordinates. */
     sheetTop(n) { return page.getBoundingClientRect().top + (starts[n - 1] ?? 0) * getZoom(); },
   };

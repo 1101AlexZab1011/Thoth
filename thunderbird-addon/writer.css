@@ -218,8 +218,9 @@ body.wp { display: flex; flex-direction: column; background: var(--wp-chrome); c
 .workspace { flex: 1; min-width: 0; display: grid; grid-template-columns: 14px 1fr; grid-template-rows: 15px 1fr; column-gap: 4px; row-gap: 0; padding: 10px 0 0 4px; background: var(--wp-chrome); position: relative; }
 .workspace.no-rulers { grid-template-columns: 0 1fr; grid-template-rows: 0 1fr; column-gap: 0; padding: 0; }
 .ruler-corner { grid-column: 1; grid-row: 1; border: 1px solid var(--wp-border); background: var(--wp-ruler-text); position: relative; }
-.ruler-corner::after { content: ""; position: absolute; left: 4px; top: 3px; width: 2px; height: 7px; background: var(--wp-text); box-shadow: 0 5px 0 0 var(--wp-text); }
-.ruler-corner::before { content: ""; position: absolute; left: 4px; top: 8px; width: 6px; height: 2px; background: var(--wp-text); }
+/* The tab-stop kind, ONLYOFFICE's "L" (a left tab). */
+.ruler-corner::before { content: ""; position: absolute; left: 4px; top: 3px; width: 2px; height: 8px; background: var(--wp-text); }
+.ruler-corner::after { content: ""; position: absolute; left: 4px; top: 9px; width: 6px; height: 2px; background: var(--wp-text); }
 .ruler { display: block; width: 100%; height: 100%; }
 .ruler.h { grid-column: 2; grid-row: 1; cursor: default; }
 .ruler.v { grid-column: 1; grid-row: 2; }

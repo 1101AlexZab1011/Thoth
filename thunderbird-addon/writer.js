@@ -1257,18 +1257,6 @@ function renderRightPanel() {
 const pages = createPageView({ page: ui.page, getEditor: () => editor, getZoom: () => zoom, getLayout: () => (editor ? layoutOf(editor.settings()) : {}), getRunningHead: () => (editor ? editor.settings()["running-head"] ?? "" : ""), paperSize, onDraw: () => { updateWhere(); rulers.schedule(); lines.schedule(); } });
 const lines = createLineNumbers({ page: ui.page, getRoot: () => doc.root, getZoom: () => zoom, getLeft: () => pages.geometry.left, getPitch: () => pages.pitch });
 
-/** The sheet the vertical ruler follows: the cursor's, when it is in view; else the one in the middle of the view. */
-function currentSheetTop() {
-  const box = ui.scroll.getBoundingClientRect();
-  let y = box.top + box.height / 2;
-  try {
-    const caret = editor.view.coordsAtPos(editor.view.state.selection.from).top;
-    if (caret > box.top && caret < box.bottom) y = caret;
-  } catch { /* not laid out yet */ }
-  const at = pages.pageAt(y);
-  return pages.sheetTop(at.page);
-}
-
 /** The indents of the paragraph at the cursor, in cm, for the ruler's markers. */
 function rulerParagraph() {
   if (!editor || doc.status === "readonly") return null;
@@ -1278,7 +1266,7 @@ function rulerParagraph() {
 
 const rulers = createRulers({
   hruler: ui.hruler, vruler: ui.vruler, page: ui.page, scroll: ui.scroll,
-  getGeometry: () => pages.geometry, getZoom: () => zoom, getSheetTop: currentSheetTop, getParagraph: rulerParagraph,
+  getGeometry: () => pages.geometry, getZoom: () => zoom, getSheetTops: () => pages.sheetTops(), getParagraph: rulerParagraph,
   onMargins: (margins) => setLayout({ margins }),
   onIndents: ({ left, right, firstLine }) => {
     const v = (n) => (n ? `${Math.round(n * 100) / 100}cm` : null);

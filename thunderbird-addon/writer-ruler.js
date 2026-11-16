@@ -1,11 +1,11 @@
 // Rulers, as ONLYOFFICE draws them: a horizontal one across the page's width and a vertical one
-// along the current sheet. The margins are grey and the text area white; centimetres are counted
+// beside each sheet in view. The margins are grey and the text area white; centimetres are counted
 // from the margin both ways. Dragging a margin's edge changes the document's margins; dragging the
 // indent markers (first line, left, right) indents the paragraphs the cursor is in.
 const PX_PER_CM = 96 / 2.54;
 const H_MARK = 15;
 
-export function createRulers({ hruler, vruler, page, scroll, getGeometry, getZoom, getSheetTop, getParagraph, onMargins, onIndents }) {
+export function createRulers({ hruler, vruler, page, scroll, getGeometry, getZoom, getSheetTops, getParagraph, onMargins, onIndents }) {
   let queued = false;
   let drag = null; // { kind, start, value, x|y }
   const guide = document.createElement("div");
@@ -35,13 +35,15 @@ export function createRulers({ hruler, vruler, page, scroll, getGeometry, getZoo
     const cm = PX_PER_CM * zoom;
     return { g, zoom, cm, left, right: left + g.width * zoom, textLeft: left + g.left * zoom, textRight: left + (g.width - g.right) * zoom };
   }
-  function vFrame() {
+  /** The vertical ruler's coordinates for each sheet in view. */
+  function vFrames() {
     const g = getGeometry();
     const zoom = getZoom();
     const rulerRect = vruler.getBoundingClientRect();
-    const top = getSheetTop() - rulerRect.top;
     const cm = PX_PER_CM * zoom;
-    return { g, zoom, cm, top, bottom: top + g.height * zoom, textTop: top + g.top * zoom, textBottom: top + (g.height - g.bottom) * zoom };
+    return getSheetTops().map((client) => client - rulerRect.top)
+      .filter((top) => top + g.height * zoom > 0 && top < rulerRect.height)
+      .map((top) => ({ g, zoom, cm, top, bottom: top + g.height * zoom, textTop: top + g.top * zoom, textBottom: top + (g.height - g.bottom) * zoom }));
   }
 
   /** Ticks every quarter centimetre from `origin`, numbers every centimetre, along one axis. */
@@ -107,8 +109,11 @@ export function createRulers({ hruler, vruler, page, scroll, getGeometry, getZoo
   function drawV() {
     if (vruler.hidden || page.hidden) return;
     const { ctx, w, h } = size(vruler);
-    const f = vFrame();
     ctx.clearRect(0, 0, w, h);
+    for (const f of vFrames()) drawSheet(ctx, w, f);
+  }
+
+  function drawSheet(ctx, w, f) {
     const y0 = Math.round(f.top) + 0.5;
     const y1 = Math.round(f.bottom) - 0.5;
     ctx.fillStyle = css("--wp-ruler-margin");
@@ -158,9 +163,10 @@ export function createRulers({ hruler, vruler, page, scroll, getGeometry, getZoo
     return null;
   }
   function vTarget(y) {
-    const f = vFrame();
-    if (near(y, f.textTop, 3)) return "marginTop";
-    if (near(y, f.textBottom, 3)) return "marginBottom";
+    for (const f of vFrames()) {
+      if (near(y, f.textTop, 3)) return "marginTop";
+      if (near(y, f.textBottom, 3)) return "marginBottom";
+    }
     return null;
   }
 
