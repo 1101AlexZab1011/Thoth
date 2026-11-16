@@ -204,7 +204,7 @@ body.wp { display: flex; flex-direction: column; background: var(--wp-chrome); c
 .outline button[data-level="2"] { padding-left: 22px; }
 .outline button[data-level="3"] { padding-left: 36px; }
 .outline button[data-level="4"], .outline button[data-level="5"], .outline button[data-level="6"] { padding-left: 50px; font-size: 12.5px; }
-.outline .empty { color: var(--wp-muted); padding: 4px 10px; font-size: 12.5px; }
+.outline .wp-empty { color: var(--wp-muted); padding: 4px 10px; font-size: 12.5px; }
 
 /* Paragraph settings (right panel) */
 .ps { padding: 12px 14px 24px; display: grid; gap: 14px; font: 13px var(--wp-font); }
@@ -419,3 +419,11 @@ body.wp .menu .wp-colors .wp-auto { width: 100%; height: 26px; }
 .workspace.no-rulers { grid-template-columns: 0 minmax(0, 1fr); grid-template-rows: 0 minmax(0, 1fr); }
 .scroll { contain: paint; isolation: isolate; z-index: 0; }
 .statusbar, .toolbar, .wp-header, .ruler, .ruler-corner { position: relative; z-index: 5; }
+
+/* The headings panel fills the left panel and scrolls; its own text never gets squeezed. */
+.wp-panel > .outline { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; padding: 0; }
+.wp-panel > .outline > * { flex: none; }
+.wp-panel > .outline > button { margin: 0 6px; width: auto; }
+.wp-panel > .outline > button:first-of-type { margin-top: 8px; }
+.wp-panel > .outline .wp-panel-head button { width: 26px; height: 26px; padding: 0; display: grid; place-items: center; }
+.wp-panel > .outline .wp-empty { margin: 12px 14px; padding: 0; line-height: 1.45; white-space: normal; }

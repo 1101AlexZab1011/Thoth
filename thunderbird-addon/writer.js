@@ -1554,7 +1554,7 @@ function renderOutline() {
   const items = editor.outline();
   const { heading } = editor.where();
   ui.outline.replaceChildren(h("div.wp-panel-head", {}, "Headings", h("span.spacer"), h("button", { type: "button", title: "Close", onclick: () => setLeft(null) }, icon("w-close", { size: 18 }))),
-    ...(items.length ? items.map((item) => h(`button${heading && item.text === heading ? ".current" : ""}`, { type: "button", dataset: { level: item.level }, title: item.text, onclick: () => editor.reveal(item.pos) }, item.text || "(untitled)")) : [h("p.empty", {}, "No headings yet: use the Heading styles (Home) to build the outline.")]));
+    ...(items.length ? items.map((item) => h(`button${heading && item.text === heading ? ".current" : ""}`, { type: "button", dataset: { level: item.level }, title: item.text, onclick: () => editor.reveal(item.pos) }, item.text || "(untitled)")) : [h("p.wp-empty", {}, "No headings yet: use the Heading styles (Home) to build the outline.")]));
 }
 
 function updateWhere() {
