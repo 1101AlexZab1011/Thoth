@@ -201,6 +201,26 @@ that turns Thunderbird into a workspace built around your agent.
   It has rectangle, lasso and polygon selection (cut, copy, delete, move),
   a resizable canvas, and the usual paint shortcuts while it has focus
   (<kbd>?</kbd> lists them).
+- **Writer space.** A word processor for papers in Quarto (`.qmd`, `.md`)
+  with a ribbon like ONLYOFFICE's or Word's:
+  - **Home:** styles, bold to small caps, super- and subscript, highlight,
+    lists, and Find and Replace (<kbd>Ctrl</kbd>+<kbd>F</kbd>/<kbd>H</kbd>).
+  - **Insert:** tables, figures, equations, symbols, footnotes, page breaks
+    and callouts.
+  - **Layout:** paper, orientation, margins, columns, font, size and line
+    spacing. The PDF and the Word export both follow them.
+  - **References:** citations from the `.bib` file, cross-references, the
+    citation style and a table of contents.
+  - **Review:**
+    - track changes and comments, both kept in Pandoc's form so the Word
+      export has them as Word's own;
+    - accept or reject from the panel beside the page;
+    - spelling and grammar (LanguageTool) and "Review with agent".
+  - **View:** line numbers, a page view with the document's page setup and
+    page ends, and zoom.
+  - **Export:** PDF, Word (with line numbers, if wanted) or a web page,
+    through Quarto. Formatting is written the Pandoc way, e.g.
+    `[text]{.underline}`, and untouched paragraphs are saved byte for byte.
 - **Terminal.** <kbd>Ctrl</kbd>+<kbd>`</kbd> slides a terminal up over the
   window, with tabs and horizontal or vertical splits. The agent can open
   terminals and run commands in them; you see everything it types.
