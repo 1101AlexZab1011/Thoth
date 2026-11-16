@@ -129,6 +129,26 @@ body { display: flex; flex-direction: column; background: var(--mw-bg); }
 .fd-bar.invalid .fd-count { color: var(--mw-danger); }
 .fd-bar .icon-btn[aria-pressed="true"] { background: var(--mw-primary-soft); color: var(--mw-primary-soft-text); }
 
+/* --- page view (writer-pages.js) ---------------------------------------------- */
+.page.page-view {
+  max-width: none; width: var(--pv-width); min-height: var(--pv-height); box-sizing: border-box; border-radius: 2px;
+  padding: var(--pv-top) var(--pv-right) var(--pv-bottom) var(--pv-left);
+}
+.page.page-view .wr-doc { font-family: var(--pv-font); font-size: var(--pv-size); line-height: var(--pv-leading); min-height: 0; }
+.page.page-view .wr-doc h1 { font-size: 1.6em; }
+.page.page-view .wr-doc h2 { font-size: 1.35em; }
+.page.page-view .wr-doc h3 { font-size: 1.15em; }
+.page.page-view .wr-doc h4 { font-size: 1.05em; }
+.page.page-view .wr-doc > *, .page.page-view .wr-doc p { margin-bottom: 0.6em; }
+.page.page-view .ln { left: calc(var(--pv-left) - 58px); }
+.pv-layer { position: absolute; inset: 0; pointer-events: none; z-index: 1; }
+.pv-break { position: absolute; left: 0; right: 0; border-top: 1px dashed var(--mw-border-strong); }
+.pv-break span {
+  position: absolute; right: 8px; top: -9px; padding: 0 6px; background: var(--mw-surface); border-radius: 4px;
+  font: 600 10px var(--mw-font); letter-spacing: 0.05em; text-transform: uppercase; color: var(--mw-text-3);
+}
+.pv-break.manual { border-top-style: solid; }
+
 /* --- line numbers (writer-lines.js) --------------------------------------------- */
 .ln-layer { position: absolute; inset: 0; pointer-events: none; z-index: 1; }
 .ln { position: absolute; left: 0; width: 52px; padding-right: 2px; text-align: right; font: 11px var(--mw-font-mono); color: var(--mw-text-3); user-select: none; }

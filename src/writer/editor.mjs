@@ -984,7 +984,8 @@ function firstDifference(a, b) {
   return { offset: i, ours: a.slice(Math.max(0, i - 40), i + 40), theirs: b.slice(Math.max(0, i - 40), i + 40) };
 }
 
-// The page uses these too (merging on conflicts, cross-reference autocomplete).
+// The page uses these too (merging on conflicts, cross-reference autocomplete, the page view).
+export { layoutOf, paperSize } from "./layout.mjs";
 export { merge3, labels, splitQuarto } from "./quarto.mjs";
 // The Notes page edits front matter and parses [[links]] with the vault model.
 export { splitPage, setProperties, wikilinks } from "../notes/vault.mjs";

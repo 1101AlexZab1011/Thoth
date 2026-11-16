@@ -10,9 +10,10 @@ import { accel } from "./shared/keys.js";
 import { dirOf, nameOf, resolvePath, tildePath } from "./shared/paths.js";
 import { $, h, iconButton, contextMenu, background, toast, registerPage, ask } from "./shared/page.js";
 import { DocTabs } from "./shared/doctabs.js";
-import { createWriter, merge3, labels } from "./vendor/writer/writer.mjs";
+import { createWriter, merge3, labels, layoutOf, paperSize } from "./vendor/writer/writer.mjs";
 import { createFind } from "./writer-find.js";
 import { createLineNumbers } from "./writer-lines.js";
+import { createPageView } from "./writer-pages.js";
 
 const GRAMMAR_DELAY = 1800;
 const BACKUPS = "@state/writer-backups";
@@ -20,7 +21,7 @@ const BACKUPS = "@state/writer-backups";
 const ui = {
   title: $("#title"), subtitle: $("#subtitle"), state: $("#state"), actions: $("#actions"), render: $("#render"),
   toolbar: $("#toolbar"), conflict: $("#conflict"), outline: $("#outline"), scroll: $("#scroll"), start: $("#start"),
-  page: $("#page"), editorRoot: $("#editor"), statusbar: $("#statusbar"), where: $("#where"), words: $("#words"),
+  page: $("#page"), editorRoot: $("#editor"), statusbar: $("#statusbar"), where: $("#where"), words: $("#words"), pageCount: $("#page-count"),
   grammarCount: $("#grammar-count"), imageInput: $("#image-input"), zoom: $("#zoom"), language: $("#language"), body: $("#body"),
 };
 
@@ -84,6 +85,7 @@ async function createTabEditor(tab) {
       drawFrames();
       find.refresh();
       lines.schedule();
+      pages.refresh();
       scheduleRibbon();
     },
     onSelection: () => { if (tab === doc) { updateWhere(); scheduleRibbon(); } },
@@ -174,6 +176,7 @@ const tabs = new DocTabs({
       updateWhere();
       drawFrames();
       lines.follow();
+      pages.follow();
       requestAnimationFrame(() => { ui.scroll.scrollTop = tab.scroll ?? 0; });
       if (grammarOn) scheduleGrammar(200);
       await remember(tab.path);
@@ -460,7 +463,8 @@ function renderToolbar() {
     ],
     View: () => [
       group(lb("toc", "Navigation", "The outline of headings", () => { outlineOpen = !outlineOpen; renderOutline(); updateRibbon(); }, () => outlineOpen),
-        lb("format_list_numbered", "Line numbers", "Number the lines in the margin", () => void setLineNumbers(!lines.on), () => lines.on)),
+        lb("format_list_numbered", "Line numbers", "Number the lines in the margin", () => void setLineNumbers(!lines.on), () => lines.on),
+        lb("pageview", "Page view", "Show the page as the PDF sets it: paper, margins, font, line spacing and page ends", () => void setPageView(!pages.on), () => pages.on)),
       group(tb("zoom_out", "Zoom out", () => setZoom(stepZoom(-1))), h("button.tb-text", { type: "button", title: "Zoom to 100%", onclick: () => setZoom(1) }, `${Math.round(zoom * 100)}%`), tb("zoom_in", "Zoom in", () => setZoom(stepZoom(1)))),
     ],
   };
@@ -488,6 +492,8 @@ function setSettings(changes) {
   if (!editor || doc.status === "readonly") return;
   if (!editor.setSettings(changes)) { toast("The document settings do not parse; fix them first (File → Document settings)"); return; }
   renderToolbar();
+  pages.refresh();
+  lines.schedule();
 }
 
 /** The layout as the ribbon shows it: { paper, landscape, margin, columns }. */
@@ -570,6 +576,15 @@ function setZoom(value) {
   drawFrames();
 }
 
+async function setPageView(on) {
+  pages.set(on);
+  lines.schedule();
+  drawFrames();
+  updateWhere();
+  await browser.storage.local.set({ "writer.pageView": Boolean(on) }).catch(() => {});
+  updateRibbon();
+}
+
 async function setLineNumbers(on) {
   lines.set(on);
   await browser.storage.local.set({ "writer.lineNumbers": Boolean(on) }).catch(() => {});
@@ -587,6 +602,7 @@ function setLanguage(language) {
 
 const find = createFind({ mount: ui.body, getEditor: () => editor, onReplace: () => scheduleGrammar() });
 const lines = createLineNumbers({ page: ui.page, getRoot: () => doc.root, getZoom: () => zoom });
+const pages = createPageView({ page: ui.page, getRoot: () => doc.root, getZoom: () => zoom, getLayout: () => (editor ? layoutOf(editor.settings()) : {}), paperSize, onDraw: () => updateWhere() });
 
 // Insertions ------------------------------------------------------------------
 
@@ -753,6 +769,10 @@ function updateWhere() {
   const words = textContent.split(/\s+/).filter(Boolean).length;
   ui.words.textContent = `${words.toLocaleString()} words`;
   ui.words.title = `${textContent.replace(/\s/g, "").length.toLocaleString()} characters without spaces, ${textContent.length.toLocaleString()} with`;
+  let at = null;
+  try { at = pages.pageAt(editor.view.coordsAtPos(editor.view.state.selection.from).top); } catch { /* not laid out yet */ }
+  ui.pageCount.hidden = !at;
+  ui.pageCount.textContent = at ? `Page ${at.page} of ${at.pages}` : "";
 }
 
 // ------------------------------------------------------------- grammar --
@@ -1073,7 +1093,6 @@ async function showStart() {
   ui.render.hidden = true;
   ui.outline.hidden = true;
   find.close();
-  lines.set(false);
   ui.title.textContent = "Writer";
   ui.subtitle.textContent = "";
   document.title = "Writer";
@@ -1159,6 +1178,7 @@ registerPage("writer", {
     grammar: grammarOn,
     grammarLanguage,
     lineNumbers: lines.on,
+    pageView: pages.on,
     zoom,
     settings: editor?.settings(),
   } : { path: null },
@@ -1263,11 +1283,12 @@ registerPage("writer", {
       }
       return { settings: editor.settings() };
     },
-    view: async ({ lineNumbers, zoom: z, outline }) => {
+    view: async ({ lineNumbers, zoom: z, outline, pageView }) => {
       if (lineNumbers !== undefined) await setLineNumbers(Boolean(lineNumbers));
+      if (pageView !== undefined) await setPageView(Boolean(pageView));
       if (z !== undefined) setZoom(Number(z));
       if (outline !== undefined) { outlineOpen = Boolean(outline); renderOutline(); }
-      return { lineNumbers: lines.on, zoom, outline: outlineOpen };
+      return { lineNumbers: lines.on, pageView: pages.on, zoom, outline: outlineOpen };
     },
   },
 });
@@ -1276,12 +1297,13 @@ registerPage("writer", {
 
 $("#doc-icon").append(icon("writer"));
 {
-  const prefs = await browser.storage.local.get(["writer.ribbon", "writer.zoom", "writer.lineNumbers", "writer.language"]).catch(() => ({}));
+  const prefs = await browser.storage.local.get(["writer.ribbon", "writer.zoom", "writer.lineNumbers", "writer.language", "writer.pageView"]).catch(() => ({}));
   if (RIBBON_TABS.includes(prefs["writer.ribbon"])) ribbonTab = prefs["writer.ribbon"];
   if (prefs["writer.language"]) grammarLanguage = prefs["writer.language"];
   ui.language.textContent = (LANGUAGES.find(([v]) => v === grammarLanguage) ?? ["", grammarLanguage])[1];
   setZoom(prefs["writer.zoom"] ?? 1);
   lines.set(Boolean(prefs["writer.lineNumbers"]));
+  pages.set(Boolean(prefs["writer.pageView"]));
 }
 ui.zoom.addEventListener("click", (event) => contextMenu(event, ZOOMS.map((z) => ({ label: `${Math.round(z * 100)}%`, icon: Math.abs(z - zoom) < 0.001 ? "check" : null, run: () => setZoom(z) }))));
 ui.language.addEventListener("click", (event) => contextMenu(event, LANGUAGES.map(([v, label]) => ({ label, icon: v === grammarLanguage ? "check" : null, run: () => setLanguage(v) }))));
