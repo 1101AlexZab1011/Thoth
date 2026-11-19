@@ -74,7 +74,12 @@ function setStatus(status, detail = "", tab = doc) {
   ui.state.textContent = label ?? "";
   ui.state.className = `chip ${status === "saving" ? "unsaved" : status === "rendering" ? "" : "warning"}`;
   ui.state.title = detail;
-  ui.where.textContent = label ?? (status === "saved" ? "All changes saved" : "");
+  ui.where.textContent = label ?? (status === "saved" ? (tab.dirty ? "Unsaved changes" : "All changes saved") : "");
+}
+
+/** The status bar's save message follows the edits: "Unsaved changes" until Ctrl+S. */
+function showSaveState() {
+  if (doc.status === "saved") ui.where.textContent = doc.dirty ? "Unsaved changes" : "All changes saved";
 }
 
 async function recent() {
@@ -99,6 +104,7 @@ async function createTabEditor(tab) {
       if (!tab.path || tab.status === "readonly") return;
       tabs.setDirty(tab, tab.editor.markdown() !== tab.base);
       if (tab !== doc) return;
+      showSaveState();
       scheduleOutline();
       scheduleGrammar();
       scheduleNumbers();
@@ -282,7 +288,7 @@ async function save({ tab = doc, force = false } = {}) {
       setStatus("saved", "", tab);
       tabs.saved(tab);
       if (tab.editor.markdown() !== text) tabs.setDirty(tab, true);
-      if (tab === doc) hideBar();
+      if (tab === doc) { hideBar(); showSaveState(); }
       return { saved: true };
     } catch (error) {
       if (error.status === 409) {
