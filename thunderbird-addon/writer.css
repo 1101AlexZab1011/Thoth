@@ -430,3 +430,4 @@ body.wp .menu .wp-colors .wp-auto { width: 100%; height: 26px; }
 .wp-panel > .outline .wp-empty { margin: 12px 14px; padding: 0; line-height: 1.45; white-space: normal; }
 /* The running head, greyed as Word and ONLYOFFICE show a header while the body is being edited. */
 .pv-head { position: absolute; display: flex; align-items: flex-end; font-family: var(--pv-sans); font-size: calc(var(--pv-size) * 0.92); line-height: 1.1; color: #000; opacity: 0.45; white-space: nowrap; overflow: hidden; }
+.toolbar .rb-btn .rb-label .rb-caret { display: inline-block; vertical-align: -2px; margin: 0 0 0 1px; }

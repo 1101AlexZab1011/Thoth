@@ -506,7 +506,10 @@ function renderToolbar() {
     return track(button, holds);
   };
   const big = (name, label, title, onclick, holds, { menu = false, disabled = false } = {}) => {
-    const button = h("button.rb-btn", { type: "button", title, disabled, ...(menu ? { "aria-haspopup": "menu" } : {}) }, icon(`w-${name}`, { size: 26 }), h("span.rb-label", {}, label), menu ? caret() : null);
+    // A two-line label carries its arrow after the last word ("Header & Footer ⌄"), as ONLYOFFICE does.
+    const twoLines = label.includes("\n");
+    const button = h("button.rb-btn", { type: "button", title, disabled, ...(menu ? { "aria-haspopup": "menu" } : {}) }, icon(`w-${name}`, { size: 26 }),
+      h("span.rb-label", {}, label, menu && twoLines ? caret() : null), menu && !twoLines ? caret() : null);
     button.addEventListener("click", () => (menu ? dropdown(button, onclick()) : onclick(button)));
     return track(button, holds);
   };
