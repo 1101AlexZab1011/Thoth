@@ -30,17 +30,49 @@ var workspace = class extends ExtensionAPI {
     this.groupWindowsAsThoth();
   }
 
-  /** Windows: every Thoth window joins Thoth's taskbar group, which the Thoth shortcut names and gives its icon. */
+  /**
+   * Windows: every Thoth window joins Thoth's taskbar group, which the Thoth shortcut names and gives
+   * its icon, and carries Thoth's icon itself (title bar, Alt+Tab, the taskbar's window preview).
+   */
   groupWindowsAsThoth() {
     if (Services.appinfo.OS !== "WINNT") return;
     let taskbar;
     try { taskbar = Cc["@mozilla.org/windows-taskbar;1"].getService(Ci.nsIWinTaskbar); } catch { return; }
     if (!taskbar.available) return;
+    const setIcon = this.windowIconSetter();
     const group = (window) => {
       try { taskbar.setGroupIdForWindow(window, THOTH_APP_ID); } catch (error) { console.error("Thoth taskbar group failed", error); }
+      try { setIcon?.(window); } catch (error) { console.error("Thoth window icon failed", error); }
     };
     ExtensionSupport.registerWindowListener(`${this.extension.id}-taskbar`, { onLoadWindow: group });
     for (const window of ExtensionSupport.openWindows) group(window);
+  }
+
+  /**
+   * A function that gives a window Thoth's icon, or null. Thunderbird takes window icons only from its
+   * own install folder (chrome/icons/default), never from the profile, so the icon the launcher writes
+   * into the profile (src/launcher.mjs, windowIcons) is set with LoadImage and WM_SETICON.
+   */
+  windowIconSetter() {
+    const file = PathUtils.join(PathUtils.profileDir, "chrome", "icons", "default", "messengerWindow.ico");
+    let ctypes;
+    try { ({ ctypes } = ChromeUtils.importESModule("resource://gre/modules/ctypes.sys.mjs")); } catch { return null; }
+    const user32 = ctypes.open("user32.dll");
+    const LoadImageW = user32.declare("LoadImageW", ctypes.winapi_abi, ctypes.voidptr_t, ctypes.voidptr_t, ctypes.char16_t.ptr, ctypes.uint32_t, ctypes.int, ctypes.int, ctypes.uint32_t);
+    const SendMessageW = user32.declare("SendMessageW", ctypes.winapi_abi, ctypes.intptr_t, ctypes.voidptr_t, ctypes.uint32_t, ctypes.uintptr_t, ctypes.voidptr_t);
+    const GetSystemMetrics = user32.declare("GetSystemMetrics", ctypes.winapi_abi, ctypes.int, ctypes.int);
+    const [IMAGE_ICON, LR_LOADFROMFILE, WM_SETICON, ICON_SMALL, ICON_BIG, SM_CXICON, SM_CXSMICON] = [1, 0x10, 0x80, 0, 1, 11, 49];
+    // Loaded once and kept for the session: every window shares them.
+    const load = (size) => LoadImageW(null, file, IMAGE_ICON, size, size, LR_LOADFROMFILE);
+    const big = load(GetSystemMetrics(SM_CXICON)), small = load(GetSystemMetrics(SM_CXSMICON));
+    if (big.isNull() && small.isNull()) { user32.close(); return null; } // no icon in this profile (not installed by the launcher)
+    return (window) => {
+      const handle = window.docShell?.treeOwner?.QueryInterface(Ci.nsIBaseWindow).nativeHandle;
+      if (!handle) return;
+      const hwnd = ctypes.voidptr_t(ctypes.UInt64(handle));
+      if (!big.isNull()) SendMessageW(hwnd, WM_SETICON, ICON_BIG, big);
+      if (!small.isNull()) SendMessageW(hwnd, WM_SETICON, ICON_SMALL, small);
+    };
   }
 
   onShutdown(isAppShutdown) {

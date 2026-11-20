@@ -28,7 +28,8 @@ const WM_CLASS = "Thoth";
 // (experiments/workspace/implementation.js, THOTH_APP_ID); the Start menu shortcut carries the same id,
 // which is how the taskbar finds Thoth's name and icon instead of thunderbird.exe's.
 export const THOTH_APP_ID = "Thoth.Workspace";
-// Window ids Thunderbird looks up icons by (profile/chrome/icons/default/<id>.png|.ico).
+// Window icons in the profile (chrome/icons/default/<id>.png|.ico). On Windows Thunderbird itself does not
+// read them there (only from its install folder); the add-on sets messengerWindow.ico on each window.
 const WINDOW_IDS = ["messengerWindow", "msgcomposeWindow", "messageWindow", "default"];
 
 /** Where Thoth keeps its Thunderbird profile. */
