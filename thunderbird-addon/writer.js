@@ -204,6 +204,7 @@ const tabs = new DocTabs({
       for (const other of tabs.tabs) if (other.root) other.root.hidden = other !== tab;
       ui.start.hidden = true;
       ui.page.hidden = false;
+      backstage.leaveHome();
       showChrome(true);
       ui.title.textContent = nameOf(tab.path);
       ui.title.title = tildePath(tab.path);
@@ -2023,24 +2024,19 @@ function showRenderError(result) {
 
 // ---------------------------------------------------------- start page --
 
+// With no document open, Writer starts as ONLYOFFICE does: on its File page (Create New, Open,
+// Open Recent, Advanced Settings), which gives way as soon as a document opens.
 async function showStart() {
-  ui.start.hidden = false;
+  ui.start.hidden = true;
   ui.page.hidden = true;
   showChrome(false);
-  backstage.hide();
   find.close();
   ui.title.textContent = "";
   document.title = "Writer";
   hideBar();
   setStatus("idle", "", EMPTY);
   ui.state.hidden = true;
-  const list = await recent();
-  ui.start.replaceChildren(
-    h("h2", {}, "Write a paper"),
-    h("p", {}, "Quarto and Markdown documents, with math, figures, citations and cross-references. Open a .qmd or .md file from the Files panel, or start one here."),
-    h("div.buttons", {}, h("button.btn.primary", { type: "button", onclick: newDocument }, icon("note_add", { size: 18 }), "New document"), h("button.btn", { type: "button", onclick: openDialog }, icon("folder_open", { size: 18 }), "Open…")),
-    ...(list.length ? [h("h3", {}, "Recent"), h("div.recent", {}, ...list.map((path) => h("button", { type: "button", onclick: () => open(path) }, icon("writer"), h("div", { style: { minWidth: 0 } }, h("div.name", {}, nameOf(path)), h("div.path", {}, dirOf(path).replace(/^\/home\/[^/]+/, "~"))))))] : []),
-  );
+  backstage.showHome();
   return { opened: null };
 }
 

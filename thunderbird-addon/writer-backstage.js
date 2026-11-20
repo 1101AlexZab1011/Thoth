@@ -51,7 +51,14 @@ function tile(label, colour, glyph) {
  */
 export function createBackstage({ mount, actions }) {
   let section = "info";
+  // Home: Writer with no document open, as ONLYOFFICE starts. The same page, without the items that
+  // need a document, and it stays until a document opens (no Back, Escape does not close it).
+  let home = false;
 
+  const HOME_MENU = [
+    ["home", "note_add", "Create New"], ["open", "folder_open", "Open…"], ["recent", "description", "Open Recent"], "spacer",
+    ["settings", "settings", "Advanced Settings"],
+  ];
   const MENU = [
     ["back", "arrow_back", "Back"], "-",
     ["new", "note_add", "Create New"], ["open", "folder_open", "Open…"], ["recent", "description", "Open Recent"], "-",
@@ -60,33 +67,43 @@ export function createBackstage({ mount, actions }) {
     ["close", "close", "Close File"], "spacer",
     ["settings", "settings", "Advanced Settings"],
   ];
-  const IMMEDIATE = { back: () => hide(), open: () => { hide(); actions.open(); }, save: () => { hide(); actions.save(); }, copy: () => { hide(); actions.saveCopy(); }, print: () => { hide(); actions.print(); }, close: () => { hide(); actions.close(); } };
+  // Leaving for a document: the backstage closes; home stays until the document has opened.
+  const leave = () => { if (!home) hide(); };
+  const IMMEDIATE = { back: () => hide(), open: () => { leave(); actions.open(); }, save: () => { hide(); actions.save(); }, copy: () => { hide(); actions.saveCopy(); }, print: () => { hide(); actions.print(); }, close: () => { hide(); actions.close(); } };
+  const tilde = (path) => path.replace(/^(\/home\/[^/]+|\/Users\/[^/]+|[A-Za-z]:\/Users\/[^/]+)(?=\/|$)/, "~");
+
+  function recentList() {
+    const list = h("div.bs-list", {}, h("p", { style: { color: "var(--wp-muted)" } }, "Loading…"));
+    void actions.recent().then((paths) => list.replaceChildren(...(paths.length ? paths.map((path) => h("button", { type: "button", onclick: () => { leave(); actions.openPath(path); } },
+      icon("writer", { size: 22 }), h("div", {}, h("div", {}, path.split("/").pop()), h("div.path", {}, tilde(path))))) : [h("p.bs-none", {}, "No recent documents")])));
+    return list;
+  }
+  const createTiles = () => h("div.bs-create", {}, h("button", { type: "button", onclick: () => { leave(); actions.createNew(); } }, h("div.sheet", {}, icon("w-add", { size: 28 })), "Blank document"));
 
   function render() {
-    const menu = h("nav.bs-menu", { "aria-label": "File" }, ...MENU.map((item) => {
+    const items = (home ? HOME_MENU : MENU).map((item) => {
       if (item === "-") return h("div.bs-sep");
       if (item === "spacer") return h("div.spacer");
       const [key, name, label] = item;
       return h(`button${key === section ? ".active" : ""}${key === "back" ? ".bs-back" : ""}`, { type: "button", onclick: () => (IMMEDIATE[key] ? IMMEDIATE[key]() : show(key)) }, icon(`w-${name}`, { size: 20 }), label);
-    }));
+    });
+    const brand = home ? [h("div.bs-brand", {}, icon("writer", { size: 22 }), "Writer"), h("div.bs-sep")] : [];
+    const menu = h("nav.bs-menu", { "aria-label": "File" }, ...brand, ...items);
+    mount.classList.toggle("home", home);
     mount.replaceChildren(menu, h("div.bs-body", {}, ...body()));
   }
 
   function body() {
+    if (section === "home") {
+      return [h("h2", {}, "Create New"), createTiles(), h("h2.bs-sub", {}, "Recent documents"), recentList()];
+    }
     if (section === "download") {
       const formats = FORMATS.filter(([format]) => format !== "gfm" || actions.isQuarto());
       return [h("h2", {}, "Download As"), h("div.bs-formats", {}, ...formats.map(([format, label, colour, glyph]) =>
         h("button.bs-format", { type: "button", title: `Save as ${label} next to the document`, onclick: () => { hide(); actions.download(format); } }, tile(label, colour, glyph))))];
     }
-    if (section === "new") {
-      return [h("h2", {}, "Create New"), h("div.bs-create", {}, h("button", { type: "button", onclick: () => { hide(); actions.createNew(); } }, h("div.sheet", {}, icon("w-add", { size: 28 })), "Blank document"))];
-    }
-    if (section === "recent") {
-      const list = h("div.bs-list", {}, h("p", { style: { color: "var(--wp-muted)" } }, "Loading…"));
-      void actions.recent().then((paths) => list.replaceChildren(...(paths.length ? paths.map((path) => h("button", { type: "button", onclick: () => { hide(); actions.openPath(path); } },
-        icon("writer", { size: 22 }), h("div", {}, h("div", {}, path.split("/").pop()), h("div.path", {}, path.replace(/^\/home\/[^/]+/, "~"))))) : [h("p", {}, "No recent documents")])));
-      return [h("h2", {}, "Open Recent"), list];
-    }
+    if (section === "new") return [h("h2", {}, "Create New"), createTiles()];
+    if (section === "recent") return [h("h2", {}, "Open Recent"), recentList()];
     if (section === "settings") {
       const prefs = actions.prefs();
       const name = h("input", { type: "text", value: prefs.author, placeholder: "Shown on your tracked changes and comments" });
@@ -129,13 +146,18 @@ export function createBackstage({ mount, actions }) {
   }
 
   function show(name = section) {
+    if (home && !HOME_MENU.some((item) => Array.isArray(item) && item[0] === name)) name = "home";
     section = name;
     mount.hidden = false;
     render();
     mount.querySelector(".bs-menu button.active")?.focus();
   }
-  function hide() { mount.hidden = true; mount.replaceChildren(); }
-  mount.addEventListener("keydown", (event) => { if (event.key === "Escape") { event.preventDefault(); hide(); } });
+  function hide() { home = false; mount.hidden = true; mount.classList.remove("home"); mount.replaceChildren(); }
+  /** Writer's home, shown while no document is open. */
+  function showHome() { home = true; show("home"); }
+  /** A document opened: home gives way (an open backstage over a document stays). */
+  function leaveHome() { if (home) hide(); }
+  mount.addEventListener("keydown", (event) => { if (event.key === "Escape" && !home) { event.preventDefault(); hide(); } });
 
-  return { show, hide, get open() { return !mount.hidden; } };
+  return { show, hide, showHome, leaveHome, get open() { return !mount.hidden; }, get home() { return home; } };
 }
