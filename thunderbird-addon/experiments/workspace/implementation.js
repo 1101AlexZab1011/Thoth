@@ -66,12 +66,22 @@ var workspace = class extends ExtensionAPI {
     const load = (size) => LoadImageW(null, file, IMAGE_ICON, size, size, LR_LOADFROMFILE);
     const big = load(GetSystemMetrics(SM_CXICON)), small = load(GetSystemMetrics(SM_CXSMICON));
     if (big.isNull() && small.isNull()) { user32.close(); return null; } // no icon in this profile (not installed by the launcher)
+    const WM_GETICON = 0x7f;
+    const ours = (value) => ctypes.cast(value, ctypes.intptr_t).value.toString();
     return (window) => {
       const handle = window.docShell?.treeOwner?.QueryInterface(Ci.nsIBaseWindow).nativeHandle;
       if (!handle) return;
       const hwnd = ctypes.voidptr_t(ctypes.UInt64(handle));
-      if (!big.isNull()) SendMessageW(hwnd, WM_SETICON, ICON_BIG, big);
-      if (!small.isNull()) SendMessageW(hwnd, WM_SETICON, ICON_SMALL, small);
+      const apply = () => {
+        if (!big.isNull()) SendMessageW(hwnd, WM_SETICON, ICON_BIG, big);
+        if (!small.isNull()) SendMessageW(hwnd, WM_SETICON, ICON_SMALL, small);
+      };
+      apply();
+      // Thunderbird sets its own icon again later (after a start from the Start menu the window had it
+      // back within seconds), so the window is checked every few seconds and given Thoth's again.
+      const shown = (which, icon) => icon.isNull() || String(SendMessageW(hwnd, WM_GETICON, which, null)) === ours(icon);
+      const timer = window.setInterval(() => { try { if (!shown(ICON_BIG, big) || !shown(ICON_SMALL, small)) apply(); } catch { /* window closing */ } }, 3000);
+      window.addEventListener("unload", () => window.clearInterval(timer), { once: true });
     };
   }
 
