@@ -12,6 +12,7 @@ import { icon } from "./shared/icons.js";
 import { dirOf, isAbsolutePath, nameOf, resolvePath, tildePath } from "./shared/paths.js";
 import { $, h, iconButton, background, toast, registerPage, ask } from "./shared/page.js";
 import { DocTabs } from "./shared/doctabs.js";
+import { createHome } from "./shared/home.js";
 import { applyOps, isDeckPath, isRelativeMedia, mapMedia, mergeDecks, newDeck, parseDeck, serializeDeck, summarize, extensionForMime, EXTENSION } from "./vendor/slides-core/slides-core.mjs";
 
 const BACKUPS = "@state/slides-backups";
@@ -193,7 +194,7 @@ const tabs = new DocTabs({
       } finally { applying = false; }
       tab.pending = null;
       tab.deck = null;
-      ui.start.hidden = true;
+      startHome.hide();
       ui.app.hidden = false;
       status.path.textContent = tilde(tab.path);
       status.path.title = tab.path;
@@ -380,21 +381,19 @@ async function watch(tab) {
 
 // ------------------------------------------------------------ start screen --
 
+// With no deck open, Slides starts on its home (shared/home.js), as Writer and Draw do.
+const startHome = createHome({
+  mount: ui.start, name: "Slides", appIcon: "slides", fileIcon: "slides", label: deckName,
+  create: [{ label: "Blank presentation", shape: "landscape", run: () => void newDeckDialog() }],
+  open: () => void openDialog(), recent, openPath: (path) => void open(path),
+  extra: [{ icon: "upload", label: "Import PowerPoint…", run: () => void importDialog() }],
+});
+
 async function showStart() {
   doc = EMPTY;
   ui.app.hidden = true;
-  ui.start.hidden = false;
   document.title = "Slides";
-  const list = await recent();
-  ui.start.replaceChildren(h("div.inner", {},
-    h("h2", {}, icon("slides"), "Presentations"),
-    h("p", {}, "Make slides by hand, like in Google Slides, with the agent beside you: it can read every slide, see what you select, and add or change anything. Decks are .slides.json files; PowerPoint files import and export."),
-    h("div.buttons", {},
-      h("button.btn.primary", { type: "button", onclick: () => void newDeckDialog() }, icon("note_add", { size: 18 }), "New presentation"),
-      h("button.btn", { type: "button", onclick: () => void openDialog() }, icon("folder_open", { size: 18 }), "Open…"),
-      h("button.btn", { type: "button", onclick: () => void importDialog() }, icon("upload", { size: 18 }), "Import PowerPoint…")),
-    ...(list.length ? [h("h3", {}, "Recent"), h("div.recent", {}, ...list.map((path) => h("button", { type: "button", onclick: () => void open(path) }, icon("slides"), h("div", { style: { minWidth: 0 } }, h("div.name", {}, deckName(path)), h("div.path", {}, tilde(dirOf(path)))))))] : []),
-  ));
+  startHome.show();
   return { opened: null };
 }
 

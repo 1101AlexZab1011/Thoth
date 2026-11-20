@@ -14,6 +14,7 @@ import { icon } from "./shared/icons.js";
 import { dirOf, nameOf, tildePath } from "./shared/paths.js";
 import { $, h, iconButton, background, toast, registerPage, ask, contextMenu } from "./shared/page.js";
 import { pickFiles } from "./shared/filepicker.js";
+import { createHome } from "./shared/home.js";
 import { DocTabs } from "./shared/doctabs.js";
 import { History } from "./draw/history.js";
 import * as g from "./draw/geometry.js";
@@ -186,7 +187,7 @@ const tabs = new DocTabs({
     show(t) {
       tab = t;
       t.frame.hidden = false;
-      ui.start.hidden = true;
+      startHome.hide();
       ui.app.hidden = false;
       layoutPage();
       if (t.view) applyView(); else fit();
@@ -2027,21 +2028,18 @@ async function remember(path) {
   await browser.storage.local.set({ [RECENT_KEY]: list }).catch(() => {});
 }
 
+// With no drawing open, Draw starts on its home (shared/home.js), as Writer and Slides do.
+const startHome = createHome({
+  mount: ui.start, name: "Draw", appIcon: "draw", fileIcon: "shape_line",
+  create: [{ label: "Blank drawing", shape: "portrait", run: () => void newDrawingDialog() }],
+  open: () => void openDialog(), recent, openPath: (path) => void openFile(path),
+});
+
 async function showStart() {
   tab = null;
   ui.app.hidden = true;
-  ui.start.hidden = false;
   document.title = "Draw";
-  const list = await recent();
-  ui.start.replaceChildren(h("div.inner", {},
-    h("h2", {}, icon("shape_line"), "Drawings"),
-    h("p", {}, "Posters, figures and diagrams as SVG files, edited by hand with the agent beside you. Files stay plain SVG: Inkscape opens them as they are, layers and all."),
-    h("div.buttons", {},
-      h("button.btn.primary", { type: "button", onclick: () => void newDrawingDialog() }, icon("note_add", { size: 18 }), "New drawing"),
-      h("button.btn", { type: "button", onclick: () => void openDialog() }, icon("folder_open", { size: 18 }), "Open…")),
-    ...(list.length ? [h("h3", {}, "Recent"), h("div.recent", {}, ...list.map((path) => h("button", { type: "button", onclick: () => void openFile(path) },
-      icon("shape_line"), h("div", { style: { minWidth: 0 } }, h("div.name", {}, nameOf(path)), h("div.path", {}, tilde(dirOf(path)))))))] : []),
-  ));
+  startHome.show();
   return { opened: null };
 }
 

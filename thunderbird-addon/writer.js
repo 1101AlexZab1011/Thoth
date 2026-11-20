@@ -20,6 +20,7 @@ import { createPageView, DEFAULT_FONT, DEFAULT_SIZE } from "./writer-pages.js";
 import { createRulers } from "./writer-ruler.js";
 import { createReviewPanel } from "./writer-review.js";
 import { createBackstage } from "./writer-backstage.js";
+import { createHome } from "./shared/home.js";
 import { dropdown, colorMenu, tableGrid } from "./writer-menus.js";
 import { citationText, crossrefNumbers, crossrefText } from "./writer-cite.js";
 
@@ -202,9 +203,8 @@ const tabs = new DocTabs({
       doc = tab;
       editor = tab.editor;
       for (const other of tabs.tabs) if (other.root) other.root.hidden = other !== tab;
-      ui.start.hidden = true;
+      startHome.hide();
       ui.page.hidden = false;
-      backstage.leaveHome();
       showChrome(true);
       ui.title.textContent = nameOf(tab.path);
       ui.title.title = tildePath(tab.path);
@@ -2024,19 +2024,26 @@ function showRenderError(result) {
 
 // ---------------------------------------------------------- start page --
 
-// With no document open, Writer starts as ONLYOFFICE does: on its File page (Create New, Open,
-// Open Recent, Advanced Settings), which gives way as soon as a document opens.
+// With no document open, Writer starts as ONLYOFFICE does, on its home (shared/home.js): Create
+// New, Open, Open Recent and Advanced Settings. It gives way as soon as a document opens.
+const startHome = createHome({
+  mount: ui.start, name: "Writer", appIcon: "writer", fileIcon: "writer",
+  create: [{ label: "Blank document", shape: "portrait", run: () => void newDocument() }],
+  open: () => void openDialog(), recent, openPath: (path) => void open(path),
+  bottom: [{ icon: "settings", label: "Advanced Settings", run: () => backstage.show("settings") }],
+});
+
 async function showStart() {
-  ui.start.hidden = true;
   ui.page.hidden = true;
   showChrome(false);
+  backstage.hide();
   find.close();
   ui.title.textContent = "";
   document.title = "Writer";
   hideBar();
   setStatus("idle", "", EMPTY);
   ui.state.hidden = true;
-  backstage.showHome();
+  startHome.show();
   return { opened: null };
 }
 

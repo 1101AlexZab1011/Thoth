@@ -322,12 +322,6 @@ body.wp { display: flex; flex-direction: column; background: var(--wp-chrome); c
 .bs-info textarea.bs-yaml { font: 12.5px/1.45 var(--mw-font-mono); min-height: 220px; }
 .bs-actions { margin-top: 18px; display: flex; gap: 8px; }
 .bs-list { display: grid; gap: 2px; max-width: 640px; }
-.bs-list .bs-none { color: var(--wp-muted); margin: 0; padding: 8px 10px; }
-/* Home (no document open): the File page with Writer's name over its menu, and no slide-in. */
-.backstage.home { animation: none; }
-.bs-brand { display: flex; align-items: center; gap: 12px; height: 50px; padding: 0 16px; flex: none; font: 600 15px var(--wp-font); color: var(--wp-text); }
-.bs-brand .icon { color: var(--wp-select); }
-.bs-body h2.bs-sub { margin-top: 40px; }
 .bs-list button { display: flex; align-items: center; gap: 12px; padding: 8px 10px; border: 0; background: none; text-align: left; cursor: pointer; color: var(--wp-text); font: 13.5px var(--wp-font); border-radius: 2px; }
 .bs-list button:hover { background: var(--wp-hover); }
 .bs-list .path { color: var(--wp-muted); font-size: 12px; }
@@ -335,22 +329,6 @@ body.wp { display: flex; flex-direction: column; background: var(--wp-chrome); c
 .bs-create button { width: 120px; display: grid; gap: 8px; justify-items: center; border: 0; background: none; cursor: pointer; color: var(--wp-text); font: 13px var(--wp-font); padding: 8px; border-radius: 2px; }
 .bs-create button:hover { background: var(--wp-hover); }
 .bs-create .sheet { width: 90px; height: 120px; background: #fff; border: 1px solid var(--wp-page-border); display: grid; place-items: center; color: #999; }
-
-/* --- start page -------------------------------------------------------------------- */
-.start { max-width: 720px; margin: 0 auto; padding: 56px 24px; }
-.start h2 { margin: 0 0 6px; font-size: 22px; font-weight: 600; }
-.start p { margin: 0 0 20px; color: var(--wp-muted); }
-.start .buttons { display: flex; gap: 8px; margin-bottom: 28px; }
-.start h3 { margin: 0 0 8px; font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--wp-muted); }
-.recent { display: grid; gap: 4px; }
-.recent button {
-  display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px 12px; border: 0; border-radius: 4px;
-  background: var(--wp-card); text-align: left; cursor: pointer; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
-}
-.recent button:hover { background: var(--wp-hover); }
-.recent .icon { color: var(--wp-accent); }
-.recent .name { font-weight: 560; }
-.recent .path { color: var(--wp-muted); font: 12px var(--mw-font-mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* Pickers (citations, cross-references) */
 .picker .input { width: 100%; margin-bottom: 10px; }

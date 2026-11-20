@@ -9,6 +9,7 @@
 <link rel="stylesheet" href="vendor/writer/gapcursor.css">
 <link rel="stylesheet" href="shared/doctabs.css">
 <link rel="stylesheet" href="shared/editor.css">
+<link rel="stylesheet" href="shared/home.css">
 <link rel="stylesheet" href="writer.css">
 <body class="wp">
   <div id="tabs" class="tabs-host"></div>
@@ -32,7 +33,6 @@
       <canvas id="hruler" class="ruler h" hidden></canvas>
       <canvas id="vruler" class="ruler v" hidden></canvas>
       <main id="scroll" class="scroll">
-        <div id="start" class="start"></div>
         <article id="page" class="page" hidden>
           <div id="editor"></div>
         </article>
@@ -51,6 +51,7 @@
     <span class="sb-group" id="sb-view"></span>
     <span class="sb-group sb-zoom" id="sb-zoom"></span>
   </footer>
+  <div id="start" hidden></div>
   <div id="backstage" class="backstage" hidden></div>
   <input id="image-input" type="file" accept="image/*" hidden>
   <script type="module" src="writer.js"></script>

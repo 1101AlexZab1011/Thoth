@@ -35,25 +35,7 @@ body { background: var(--mw-bg); display: flex; flex-direction: column; height: 
   padding: 8px 10px 8px 14px; border-radius: var(--mw-radius); background: var(--mw-surface); box-shadow: var(--mw-shadow-3); font-size: 13px;
   border-left: 3px solid var(--mw-warning);
 }
-.slides-bar[hidden], .start-screen[hidden] { display: none; }
+.slides-bar[hidden] { display: none; }
 .slides-bar.danger { border-left-color: var(--mw-danger); }
 .slides-bar .btn { height: 28px; padding: 0 12px; font-size: 12.5px; }
 
-/* Start screen, when no deck is open. */
-.start-screen { position: fixed; inset: 0; overflow: auto; background: var(--mw-bg); z-index: 10; }
-.start-screen .inner { max-width: 760px; margin: 0 auto; padding: 64px 24px; }
-.start-screen h2 { margin: 0 0 6px; font-size: 22px; font-weight: 650; display: flex; align-items: center; gap: 10px; }
-.start-screen h2 .icon { color: var(--mw-primary); }
-.start-screen p { margin: 0 0 20px; color: var(--mw-text-2); }
-.start-screen .buttons { display: flex; gap: 8px; margin-bottom: 28px; flex-wrap: wrap; }
-.start-screen h3 { margin: 0 0 8px; font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--mw-text-3); }
-.recent { display: grid; gap: 4px; }
-.recent button {
-  display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px 12px; border: 0; border-radius: var(--mw-radius);
-  background: var(--mw-surface); text-align: left; cursor: pointer; box-shadow: var(--mw-shadow-1);
-}
-.recent button:hover { background: var(--mw-surface-2); }
-.recent .icon { color: var(--mw-primary); }
-.recent .name { font-weight: 560; }
-.recent .path { color: var(--mw-text-3); font: 12px var(--mw-font-mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.start-screen .loading { color: var(--mw-text-3); }
