@@ -3,11 +3,13 @@
 // to the page; the tests call them directly.
 import { createEngine } from "./engine.js";
 import { createAnnotations } from "./annotations.js";
+import { createForms } from "./forms.js";
 
 /** @param {typeof import("mupdf")} mupdf */
 export function createApi(mupdf) {
   const engine = createEngine(mupdf);
   const annots = createAnnotations(engine);
+  const forms = createForms(engine, mupdf);
 
   /** One new document from the pages of several PDFs (`pages`: indexes to take, all by default). */
   function combine(sources) {
@@ -87,6 +89,12 @@ export function createApi(mupdf) {
     annotRemove: (id, ref) => annots.remove(id, ref),
     annotReply: (id, ref, reply) => annots.reply(id, ref, reply),
     annotState: (id, ref, state, options) => annots.setState(id, ref, state, options),
+    // fill & sign
+    formFields: (id, options) => forms.fields(id, options),
+    formSet: (id, ref, value) => forms.setField(id, ref, value),
+    formFill: (id, values) => forms.fill(id, values),
+    placeImage: (id, page, rect, bytes, options) => forms.placeImage(id, page, rect, bytes, options),
+    flatten: (id, options) => forms.flatten(id, options),
     // new documents
     combine,
     fromImages,

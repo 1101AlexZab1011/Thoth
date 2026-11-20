@@ -118,3 +118,41 @@ test("comments: markup, notes, shapes, replies, states, moves and deletes", () =
   const { id: again } = api.open(saved);
   assert.equal(api.annotList(again).length, 5);
 });
+
+test("forms: fields, filling by widget and by name, image stamps, flattening", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const bytes = new Uint8Array(await readFile(new URL("./fixtures/pdf/form.pdf", import.meta.url)));
+  const { id } = api.open(bytes);
+  const fields = api.formFields(id);
+  const byName = Object.fromEntries(fields.map((f) => [f.name, f]));
+  assert.equal(byName.name.type, "text");
+  assert.equal(byName.comments.multiline, true);
+  assert.equal(byName.subscribe.type, "checkbox");
+  assert.equal(byName.country.type, "combobox");
+  assert.ok(byName.country.options.includes("Ukraine"));
+  assert.equal(fields.filter((f) => f.name === "plan").length, 2);
+
+  api.formSet(id, byName.name.ref, "Ada Lovelace");
+  const result = api.formFill(id, { email: "ada@example.org", subscribe: true, plan: "pro", country: "Ukraine", nope: "x" });
+  assert.deepEqual(result.unknown, ["nope"]);
+  const after = Object.fromEntries(api.formFields(id).filter((f) => f.name !== "plan").map((f) => [f.name, f]));
+  assert.equal(after.name.value, "Ada Lovelace");
+  assert.equal(after.email.value, "ada@example.org");
+  assert.equal(after.subscribe.checked, true);
+  assert.equal(after.country.value, "Ukraine");
+  const plan = api.formFields(id).filter((f) => f.name === "plan");
+  assert.deepEqual(plan.map((f) => f.checked), [false, true]);
+
+  const png = api.image(id, 0, { scale: 0.1 });
+  const { ref } = api.placeImage(id, 0, [180, 420, 330, 470], png);
+  assert.ok(ref > 0);
+  assert.equal(api.annotList(id).find((a) => a.ref === ref).type, "Stamp");
+
+  const saved = api.save(id);
+  const { id: again } = api.open(saved);
+  assert.equal(api.formFields(again).find((f) => f.name === "email").value, "ada@example.org");
+  api.flatten(again);
+  assert.equal(api.formFields(again).length, 0);
+  assert.equal(api.annotList(again).length, 0);
+  assert.match(api.plainText(again)[0].text, /Ada Lovelace/);
+});

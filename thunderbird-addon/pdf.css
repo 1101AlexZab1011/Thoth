@@ -270,3 +270,26 @@ body.pd { display: flex; flex-direction: column; background: var(--pd-chrome); c
 .pd-card:not(.selected):not(:focus-within) .pd-reply { display: none; }
 .pd-card:not(.selected):not(:focus-within) .pd-card-text:has(> .pd-muted) { display: none; }
 .pd-panel:has(.pd-comments) { width: 320px; }
+
+/* --- Fill & Sign: form fields as controls, the signature maker -------------------------- */
+.pd-field { position: absolute; pointer-events: auto; box-sizing: border-box; margin: 0; padding: 0 2px; border: 0; border-radius: 1px; background: transparent; color: #000; font-family: Helvetica, Arial, sans-serif; outline: none; }
+.scroll.tool .pd-field { pointer-events: none; }
+.pd-field.highlight { background: rgba(214, 222, 255, 0.85); }
+.pd-field.required.highlight { box-shadow: inset 0 0 0 1px rgba(204, 59, 59, 0.6); }
+.pd-field:focus { background: #fff; box-shadow: inset 0 0 0 1.5px var(--pd-accent); }
+textarea.pd-field { resize: none; line-height: 1.2; padding-top: 1px; scrollbar-width: thin; }
+select.pd-field { padding: 0; }
+.pd-field-checkbox, .pd-field-radio { cursor: pointer; }
+.pd-field-checkbox.highlight, .pd-field-radio.highlight { background: rgba(214, 222, 255, 0.45); }
+.pd-field-radio { border-radius: 50%; }
+.pd-field-checkbox:hover, .pd-field-radio:hover { box-shadow: inset 0 0 0 1.5px var(--pd-accent); }
+.pd-field-signature { display: grid; place-items: center; cursor: pointer; color: var(--pd-accent); font: 600 12px var(--mw-font); border: 1.5px dashed var(--pd-accent); background: rgba(214, 222, 255, 0.5); }
+.pd-field:disabled { cursor: default; }
+
+.pd-sign-tabs { margin: 4px 0 12px; }
+.pd-sign-box { margin: 12px 0; border: 1px dashed var(--mw-border-strong); border-radius: var(--mw-radius-s); background: #fff; }
+.pd-sign-canvas { display: block; width: 100%; height: auto; aspect-ratio: 600 / 180; }
+.pd-sign-canvas.drawing { cursor: crosshair; touch-action: none; }
+.segmented { display: inline-flex; border: 1px solid var(--mw-border); border-radius: var(--mw-radius-pill); overflow: hidden; }
+.segmented button { border: 0; background: none; height: 28px; padding: 0 12px; font-size: 12.5px; font-weight: 560; color: var(--mw-text-2); cursor: pointer; }
+.segmented button[aria-pressed="true"] { background: var(--mw-primary-soft); color: var(--mw-primary-soft-text); }
