@@ -267,8 +267,26 @@ npm run services:install                 # the workspace host, started at login
 listener-mcp init --user --agent claude,codex   # listener MCP server, hooks and skill for every session
 listener-mcp app add mail --credential email-agent --group "mail-chat-{instance}" --channels "mail/chat/{instance},mail/replies/{instance}/**" --from now --exclusive --single-instance
 listener-mcp token create --name mail-watcher --scopes "publish:mail/replies/**,read:mail/chat/sessions" --save   # reply announcements
-npm run chat:addon                       # builds dist/agent-chat.xpi
+npm run thoth:install                    # Thoth itself: its profile, the add-on, and a "Thoth" app entry; starts it
 ```
+
+Thoth runs in Thunderbird, in a profile of its own, so starting Thoth always
+opens Thoth and a Thunderbird you already use stays as it was.
+`npm run thoth:install` (Thunderbird must be installed first):
+
+- creates the profile (`~/.local/share/thoth`, `~/Library/Application
+  Support/Thoth` or `%APPDATA%\Thoth`) with the add-on installed and enabled,
+  and without Thunderbird's start page, What's New, donation and default-client
+  prompts or data collection;
+- pairs the add-on with listener-mcp, so the chat works on the first start;
+- adds **Thoth** where you start apps, with its icon: the app menu on Linux,
+  the Start menu and the desktop on Windows, `~/Applications/Thoth.app` on
+  macOS. Thoth's windows carry its icon too.
+
+Start it from there, or with `npm run thoth`. Running `thoth:install` again
+updates the add-on and keeps your profile; `npm run thoth:uninstall` removes
+the app entry (`-- --purge` also deletes the profile with its accounts and
+local mail). Thoth updates itself afterwards (Settings → Updates).
 
 The commands are the same on every system. `service install` and
 `services:install` set up per-user services: systemd user units on Linux,
@@ -304,15 +322,9 @@ foreach ($skill in "email-start-chat","email-compose","email-review-pending","em
 }
 ```
 
-Install `dist/agent-chat.xpi` (or `agent-chat.xpi` from the repository's
-[Releases](https://github.com/1101AlexZab1011/mail-mcp-workspace/releases),
-built for each version tag) from **Add-ons and Themes → gear menu → Install
-Add-on From File**. Then pair the add-on:
-
-1. Open its settings page, which shows the exact `listener-mcp pair …`
-   command.
-2. Run that command.
-3. Press **Pair now**, or restart Thunderbird within ten minutes.
+If the chat says it is not paired (the pairing waits ten minutes for Thoth's
+first start), open Settings → Agent connection, run the `listener-mcp pair …`
+command it shows, and press **Pair now**.
 
 For GUI control, the agent's credential also needs the GUI and workspace
 scopes:
