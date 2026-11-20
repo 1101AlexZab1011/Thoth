@@ -327,10 +327,12 @@ first start), open Settings → Agent connection, run the `listener-mcp pair …
 command it shows, and press **Pair now**.
 
 For GUI control, the agent's credential also needs the GUI and workspace
-scopes:
+scopes. The command replaces the credential `app add` made, so it repeats
+that one's chat and reply scopes (without `mail/replies`, attaching fails
+with "may not subscribe on mail/replies/…"):
 
 ```bash
-listener-mcp token create --name email-agent --replace --save --scopes "subscribe:mail/chat/**,publish:mail/chat/**,read:mail/chat/**,publish:mail/gui/commands,read:mail/gui/**,read:mail/workspace/files,publish:mail/workspace/fs,publish:mail/workspace/render,publish:mail/workspace/artifacts,read:mail/workspace/artifacts,publish:mail/workspace/terminal,blobs"
+listener-mcp token create --name email-agent --replace --save --scopes "subscribe:mail/chat/**,publish:mail/chat/**,read:mail/chat/**,subscribe:mail/replies/**,publish:mail/replies/**,read:mail/replies/**,publish:mail/gui/commands,read:mail/gui/**,read:mail/workspace/files,publish:mail/workspace/fs,publish:mail/workspace/render,publish:mail/workspace/artifacts,read:mail/workspace/artifacts,publish:mail/workspace/terminal,blobs"
 ```
 
 The agent's token deliberately lacks `publish:mail/workspace/grants` and
