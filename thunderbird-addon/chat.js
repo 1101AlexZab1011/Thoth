@@ -235,10 +235,12 @@ const missingImageIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><g fill="n
 
 // A sent message carries its attachments as a trailing list of paths. The transcript shows
 // them as the files they are, so the raw paths are lifted out before the text is rendered.
+// Absolute paths on every system: /home/…, C:\Users\… (or C:/…), and \\server\share\….
+const ABSOLUTE = String.raw`(?:\/|[A-Za-z]:[\\/]|\\\\)`;
 function splitAttachments(text) {
-  const match = text.match(/\n*Attachments:\n((?:- \/\S.*(?:\n|$))+)$/);
+  const match = text.match(new RegExp(String.raw`\n*Attachments:\n((?:- ${ABSOLUTE}\S.*(?:\n|$))+)$`));
   if (!match) return { body: text, files: [] };
-  const files = [...match[1].matchAll(/^- (\/\S+?)(?: \(([^,)]+)(?:, ([^)]+))?\))?$/gm)]
+  const files = [...match[1].matchAll(new RegExp(String.raw`^- (${ABSOLUTE}.+?)(?: \(([^,)]+)(?:, ([^)]+))?\))?$`, "gm"))]
     .map((line) => ({ path: line[1], type: line[2] ?? "", size: line[3] ?? "" }));
   return { body: text.slice(0, match.index).trimEnd(), files };
 }
