@@ -23,6 +23,10 @@ const brand = join(root, "assets", "brand");
 export const ADDON_ID = "agent-chat@mail-mcp-workspace.local";
 const RELEASE_XPI = "https://github.com/1101AlexZab1011/Thoth/releases/latest/download/agent-chat.xpi";
 const WM_CLASS = "Thoth";
+// Thoth's Windows taskbar identity (AppUserModelID). The add-on puts every Thoth window in this group
+// (experiments/workspace/implementation.js, THOTH_APP_ID); the Start menu shortcut carries the same id,
+// which is how the taskbar finds Thoth's name and icon instead of thunderbird.exe's.
+export const THOTH_APP_ID = "Thoth.Workspace";
 // Window ids Thunderbird looks up icons by (profile/chrome/icons/default/<id>.png|.ico).
 const WINDOW_IDS = ["messengerWindow", "msgcomposeWindow", "messageWindow", "default"];
 
@@ -195,13 +199,35 @@ async function linuxEntry(thunderbird, profile, env) {
   return [file];
 }
 
-async function windowsShortcuts(thunderbird, profile, base, env) {
-  const ico = join(base, "thoth.ico");
-  await writeIco(ico);
-  const startMenu = join(env.APPDATA ?? join(homedir(), "AppData", "Roaming"), "Microsoft", "Windows", "Start Menu", "Programs", "Thoth.lnk");
-  const desktop = join(env.USERPROFILE ?? homedir(), "Desktop", "Thoth.lnk");
+// Sets a shortcut's System.AppUserModel.ID (WScript.Shell cannot): its property store, read-write.
+const SET_APP_ID = `
+using System;
+using System.Runtime.InteropServices;
+public static class ThothShortcut {
+  [StructLayout(LayoutKind.Sequential, Pack = 4)] struct PropertyKey { public Guid FormatId; public uint PropertyId; }
+  [StructLayout(LayoutKind.Sequential)] struct PropVariant { public ushort Type; ushort R1, R2, R3; public IntPtr Value; IntPtr Value2; }
+  [ComImport, Guid("886D8EEB-8CF2-4446-8D02-CDBA1DBDCF99"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+  interface IPropertyStore {
+    int GetCount(out uint count); int GetAt(uint index, out PropertyKey key);
+    int GetValue(ref PropertyKey key, out PropVariant value); int SetValue(ref PropertyKey key, ref PropVariant value); int Commit();
+  }
+  [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
+  static extern int SHGetPropertyStoreFromParsingName(string path, IntPtr bindContext, int flags, ref Guid iid, out IPropertyStore store);
+  public static void SetAppId(string lnk, string id) {
+    Guid iid = typeof(IPropertyStore).GUID;
+    IPropertyStore store;
+    Marshal.ThrowExceptionForHR(SHGetPropertyStoreFromParsingName(lnk, IntPtr.Zero, 2, ref iid, out store));
+    PropertyKey key = new PropertyKey { FormatId = new Guid("9F4C2855-9F79-4B39-A8D0-E1D42DE1D5F3"), PropertyId = 5 };
+    PropVariant value = new PropVariant { Type = 31, Value = Marshal.StringToCoTaskMemUni(id) };
+    try { Marshal.ThrowExceptionForHR(store.SetValue(ref key, ref value)); Marshal.ThrowExceptionForHR(store.Commit()); }
+    finally { Marshal.FreeCoTaskMem(value.Value); Marshal.ReleaseComObject(store); }
+  }
+}`;
+
+/** The PowerShell that writes Thoth's shortcuts: target, icon, and the taskbar id Thoth's windows use. */
+export function windowsShortcutScript({ thunderbird, profile, ico, links }) {
   const ps = (s) => `'${String(s).replace(/'/g, "''")}'`;
-  const script = [startMenu, desktop].map((lnk) => [
+  return [`Add-Type -TypeDefinition ${ps(SET_APP_ID)}`, ...links.map((lnk) => [
     `$s = (New-Object -ComObject WScript.Shell).CreateShortcut(${ps(lnk)})`,
     `$s.TargetPath = ${ps(thunderbird)}`,
     `$s.Arguments = ${ps(`--profile "${profile}"`)}`,
@@ -209,7 +235,16 @@ async function windowsShortcuts(thunderbird, profile, base, env) {
     `$s.IconLocation = ${ps(`${ico},0`)}`,
     `$s.Description = 'Thoth: mail, calendar, documents and an AI agent'`,
     "$s.Save()",
-  ].join("; ")).join("; ");
+    `[ThothShortcut]::SetAppId(${ps(lnk)}, ${ps(THOTH_APP_ID)})`,
+  ].join("; "))].join("; ");
+}
+
+async function windowsShortcuts(thunderbird, profile, base, env) {
+  const ico = join(base, "thoth.ico");
+  await writeIco(ico);
+  const startMenu = join(env.APPDATA ?? join(homedir(), "AppData", "Roaming"), "Microsoft", "Windows", "Start Menu", "Programs", "Thoth.lnk");
+  const desktop = join(env.USERPROFILE ?? homedir(), "Desktop", "Thoth.lnk");
+  const script = windowsShortcutScript({ thunderbird, profile, ico, links: [startMenu, desktop] });
   await run("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script], { windowsHide: true });
   return [startMenu, desktop];
 }

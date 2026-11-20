@@ -3,7 +3,15 @@ import assert from "node:assert/strict";
 import { mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ADDON_ID, profileUuid, thothDirs, userJs, writeIcns, writeIco } from "../src/launcher.mjs";
+import { ADDON_ID, THOTH_APP_ID, profileUuid, thothDirs, userJs, windowsShortcutScript, writeIcns, writeIco } from "../src/launcher.mjs";
+
+test("Windows shortcuts carry the taskbar id the add-on gives Thoth's windows", async () => {
+  const links = ["C:\\Start Menu\\Thoth.lnk", "C:\\Desktop\\Thoth.lnk"];
+  const script = windowsShortcutScript({ thunderbird: "C:\\TB\\thunderbird.exe", profile: "C:\\Thoth\\Profile", ico: "C:\\Thoth\\thoth.ico", links });
+  for (const lnk of links) assert.ok(script.includes(`[ThothShortcut]::SetAppId('${lnk}', '${THOTH_APP_ID}')`));
+  const experiment = await readFile(new URL("../thunderbird-addon/experiments/workspace/implementation.js", import.meta.url), "utf8");
+  assert.equal(experiment.match(/const THOTH_APP_ID = "([^"]+)"/)?.[1], THOTH_APP_ID);
+});
 
 test("Thoth's profile preferences enable the add-on, fix its origin and drop Thunderbird's extras", () => {
   const text = userJs("11111111-2222-3333-4444-555555555555");

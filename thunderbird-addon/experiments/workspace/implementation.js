@@ -9,6 +9,9 @@ var { ExtensionUtils } = ChromeUtils.importESModule("resource://gre/modules/Exte
 
 const MESSENGER = "chrome://messenger/content/messenger.xhtml";
 const RESOURCE_HOST = "mailworkspace";
+// Thoth's Windows taskbar identity (AppUserModelID). The launcher (src/launcher.mjs, THOTH_APP_ID)
+// stamps the same id on the Thoth shortcuts, so the taskbar shows Thoth's name and icon, not Thunderbird's.
+const THOTH_APP_ID = "Thoth.Workspace";
 
 var workspace = class extends ExtensionAPI {
   onStartup() {
@@ -24,10 +27,25 @@ var workspace = class extends ExtensionAPI {
     this.listeners = { dock: new Set(), shortcut: new Set() };
     this.sheetUrl = `resource://${RESOURCE_HOST}/theme/chrome.css`;
     this.paneSheetUrl = `resource://${RESOURCE_HOST}/theme/panes.css`;
+    this.groupWindowsAsThoth();
+  }
+
+  /** Windows: every Thoth window joins Thoth's taskbar group, which the Thoth shortcut names and gives its icon. */
+  groupWindowsAsThoth() {
+    if (Services.appinfo.OS !== "WINNT") return;
+    let taskbar;
+    try { taskbar = Cc["@mozilla.org/windows-taskbar;1"].getService(Ci.nsIWinTaskbar); } catch { return; }
+    if (!taskbar.available) return;
+    const group = (window) => {
+      try { taskbar.setGroupIdForWindow(window, THOTH_APP_ID); } catch (error) { console.error("Thoth taskbar group failed", error); }
+    };
+    ExtensionSupport.registerWindowListener(`${this.extension.id}-taskbar`, { onLoadWindow: group });
+    for (const window of ExtensionSupport.openWindows) group(window);
   }
 
   onShutdown(isAppShutdown) {
     if (isAppShutdown) return;
+    ExtensionSupport.unregisterWindowListener(`${this.extension.id}-taskbar`);
     this.undoAboutLogins?.();
     ExtensionSupport.unregisterWindowListener(`${this.extension.id}-workspace`);
     this.scope?.removeTheme?.(this.paneSheetUrl);
