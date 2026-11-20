@@ -357,3 +357,28 @@
 /* Contacts: the books list and the toolbar keep the same room from the edges. */
 :root:has(#booksPane) #books { padding-inline: 8px !important; }
 :root:has(#booksPane) #booksPaneHeader { padding-inline: 10px !important; }
+
+/* Mail with no account (experiments/workspace/mail.js): Mail's home over the empty panes, in the
+   layout and colours of the Writer, Slides and Draw homes (shared/home.css). */
+.mw-mail-home { position: fixed; inset: 0; z-index: 100; display: flex; background: var(--mw-bg); color: var(--mw-text); font: 14px var(--mw-font); }
+.mw-mail-home[hidden] { display: none; }
+.mw-mail-home img { width: 20px; height: 20px; -moz-context-properties: fill, fill-opacity; fill: currentColor; fill-opacity: 1; }
+.mw-mh-menu { width: 248px; flex: none; display: flex; flex-direction: column; gap: 2px; padding: 0 10px 12px; background: var(--mw-surface); border-inline-end: 1px solid var(--mw-border); overflow: auto; }
+.mw-mh-brand { display: flex; align-items: center; gap: 10px; height: 56px; padding: 0 8px; margin-bottom: 6px; border-bottom: 1px solid var(--mw-border); font-weight: 650; font-size: 15px; }
+.mw-mh-brand img { width: 22px; height: 22px; color: var(--mw-primary); }
+.mw-mh-menu button { display: flex; align-items: center; gap: 12px; height: 36px; padding: 0 12px; margin: 0; border: 0; border-radius: var(--mw-radius-s); background: none; color: var(--mw-text); font: inherit; text-align: start; cursor: pointer; appearance: none; }
+.mw-mh-menu button img { color: var(--mw-text-2); }
+.mw-mh-menu button:hover { background: var(--mw-hover); }
+.mw-mh-menu button.active { background: var(--mw-primary-soft); color: var(--mw-primary-soft-text); }
+.mw-mh-menu button.active img { color: var(--mw-primary); }
+.mw-mh-body { flex: 1; min-width: 0; overflow: auto; padding: 40px 48px; }
+.mw-mh-body h2 { margin: 0 0 8px; font-size: 20px; font-weight: 600; }
+.mw-mh-body p { margin: 0 0 24px; max-width: 620px; color: var(--mw-text-2); line-height: 1.5; }
+.mw-mh-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 320px)); gap: 16px; }
+.mw-mh-card { display: flex; align-items: flex-start; gap: 14px; padding: 18px; margin: 0; border: 1px solid var(--mw-border); border-radius: var(--mw-radius); background: var(--mw-surface); color: var(--mw-text); font: inherit; text-align: start; cursor: pointer; appearance: none; box-shadow: var(--mw-shadow-1); transition: border-color var(--mw-fast) var(--mw-ease), box-shadow var(--mw-fast) var(--mw-ease); }
+.mw-mh-card:hover { border-color: var(--mw-primary); box-shadow: var(--mw-shadow-2); }
+.mw-mh-card:focus-visible, .mw-mh-menu button:focus-visible { outline: none; box-shadow: var(--mw-focus); }
+.mw-mh-card-icon { flex: none; display: grid; place-items: center; width: 40px; height: 40px; border-radius: var(--mw-radius-s); background: var(--mw-primary-soft); color: var(--mw-primary); }
+.mw-mh-card-text { display: grid; gap: 4px; }
+.mw-mh-card-text strong { font-weight: 600; }
+.mw-mh-card-text span { color: var(--mw-text-2); font-size: 13px; line-height: 1.45; }

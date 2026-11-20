@@ -94,6 +94,13 @@
   fill: currentColor !important; fill-opacity: 1 !important; stroke: currentColor !important;
 }
 :root[mw-workspace] #spacesToolbar .spaces-toolbar-container { gap: 8px; }
+/* The bar is never hidden: no Hide button (<<), no "More spaces…" overflow (>>: Thoth's groups
+   already hold the add-on spaces), and none of the status-bar buttons that bring a hidden bar back. */
+:root[mw-workspace] #collapseButton,
+:root[mw-workspace] #spacesToolbarAddonsOverflowButton,
+:root[mw-workspace] #spacesToolbarReveal,
+:root[mw-workspace] #spacesPinnedButton,
+:root[mw-workspace] #spacesPopupButtonReveal { display: none !important; }
 :root[mw-workspace] .spaces-badge-container { background: var(--mw-danger) !important; }
 /* The file-browser toggle is on while its dock is open. */
 :root[mw-workspace] #spacesToolbar .mw-space-button.mw-active { background: var(--mw-hover) !important; color: var(--mw-text) !important; }

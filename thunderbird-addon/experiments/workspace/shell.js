@@ -151,6 +151,11 @@ function makeSpaceButton(document, { id, title, icon, onclick }) {
 
 function installSidebarButtons(window, ctx) {
   const document = window.document;
+  // The spaces bar is Thoth's navigation, so it is never hidden: its Hide (<<) and "More spaces…"
+  // (>>) buttons are gone (theme/chrome.css), and a bar hidden before comes back, now and on the
+  // next start (Thunderbird restores the hidden state from the xulStore).
+  try { Services.xulStore.setValue(document.documentURI, "spacesToolbar", "hidden", "false"); } catch { /* no store */ }
+  if (window.gSpacesToolbar?.isHidden) window.gSpacesToolbar.toggleToolbar(false);
   const top = document.querySelector("#spacesToolbar .spaces-toolbar-top-container");
   const bottom = document.querySelector("#spacesToolbar .spaces-toolbar-bottom-container");
   if (!top || document.getElementById("mw-files-dock-button")) return;

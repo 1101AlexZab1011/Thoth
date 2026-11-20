@@ -2025,12 +2025,11 @@ function showRenderError(result) {
 // ---------------------------------------------------------- start page --
 
 // With no document open, Writer starts as ONLYOFFICE does, on its home (shared/home.js): Create
-// New, Open, Open Recent and Advanced Settings. It gives way as soon as a document opens.
+// New, Open and Open Recent. It gives way as soon as a document opens.
 const startHome = createHome({
   mount: ui.start, name: "Writer", appIcon: "writer", fileIcon: "writer",
   create: [{ label: "Blank document", shape: "portrait", run: () => void newDocument() }],
   open: () => void openDialog(), recent, openPath: (path) => void open(path),
-  bottom: [{ icon: "settings", label: "Advanced Settings", run: () => backstage.show("settings") }],
 });
 
 async function showStart() {

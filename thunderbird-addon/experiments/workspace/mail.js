@@ -3,7 +3,7 @@
    message header as a card with the sender's initials and Reply / Reply all / Forward / Archive /
    Delete with their labels. Thunderbird's own quick filter and header do the work.
    Called for each about:3pane and about:message document as it loads (themeDocument). */
-/* global Services */
+/* global Services, ChromeUtils */
 
 const MAIL_HEADER_DONE = "extensions.mailworkspace.mail.header-layout";
 
@@ -13,6 +13,7 @@ function mailPaneBehaviour(doc) {
   doc.mwMail = true;
   const ready = (fn) => (doc.readyState === "complete" ? fn() : win.addEventListener("load", fn, { once: true }));
   if (/^about:3pane/.test(doc.documentURI)) ready(() => { try { mailListBar(doc); } catch (error) { console.error("Thoth: mail list", error); } });
+  if (/^about:3pane/.test(doc.documentURI)) ready(() => { try { mailConnectHome(doc); } catch (error) { console.error("Thoth: mail home", error); } });
   if (/^about:message/.test(doc.documentURI)) ready(() => { try { mailHeaderLayout(doc); } catch (error) { console.error("Thoth: message header", error); } });
   if (/multimessageview\.xhtml/.test(doc.documentURI)) ready(() => { try { mailSummary(doc); } catch (error) { console.error("Thoth: summary", error); } });
 }
@@ -86,6 +87,54 @@ function mailListBar(doc) {
       search?.focus?.();
     }
   }, true);
+}
+
+/** Whether a mail account is set up (Local Folders alone is not one). */
+function hasMailAccount(MailServices) {
+  return MailServices.accounts.accounts.some((account) => account.incomingServer && account.incomingServer.type !== "none");
+}
+
+/**
+ * Mail with no account: instead of Thunderbird's empty folder pane, list and reader, Mail's home in
+ * the layout of the Writer, Slides and Draw homes (shared/home.js; styled in theme/panes.css):
+ * "Mail" over a menu on the left, and on the right what to do first. It goes as soon as an account
+ * is added, and comes back if the last one is removed.
+ */
+function mailConnectHome(doc) {
+  const win = doc.defaultView;
+  const { MailServices } = ChromeUtils.importESModule("resource:///modules/MailServices.sys.mjs");
+  const top = win.browsingContext?.topChromeWindow ?? win.top;
+  const addAccount = () => top.openAccountSetup?.();
+  const importMail = () => top.toImport?.();
+  const icon = (name) => { const img = doc.createElement("img"); img.src = `resource://mailworkspace/icons/${name}.svg`; img.alt = ""; return img; };
+  const el = (tag, className, ...children) => { const node = doc.createElement(tag); if (className) node.className = className; node.append(...children); return node; };
+  const button = (className, iconName, label, run) => { const b = el("button", className, icon(iconName), label); b.type = "button"; b.addEventListener("click", run); return b; };
+  const card = (iconName, title, text, run) => {
+    const b = el("button", "mw-mh-card", el("span", "mw-mh-card-icon", icon(iconName)), el("span", "mw-mh-card-text", el("strong", "", title), el("span", "", text)));
+    b.type = "button";
+    b.addEventListener("click", run);
+    return b;
+  };
+
+  const home = el("div", "mw-mail-home",
+    el("nav", "mw-mh-menu",
+      el("div", "mw-mh-brand", icon("mail"), "Mail"),
+      button("active", "person_add", "Add mail account", addAccount),
+      button("", "download", "Import…", importMail)),
+    el("main", "mw-mh-body",
+      el("h2", "", "Connect your mail"),
+      el("p", "", "Add your email account to read, write and file mail here, with the agent beside you. Your password stays on this computer."),
+      el("div", "mw-mh-cards",
+        card("person_add", "Add mail account", "Sign in with your address and password. Gmail, Outlook, iCloud and most providers are set up for you.", addAccount),
+        card("download", "Import from another app", "Bring accounts, mail, contacts and calendars from Thunderbird, Outlook, Apple Mail or SeaMonkey.", importMail))));
+  home.hidden = true;
+  doc.body.append(home);
+
+  const sync = () => { home.hidden = hasMailAccount(MailServices); };
+  sync();
+  const listener = { onServerLoaded: sync, onServerUnloaded: () => win.setTimeout(sync, 0), onServerChanged: sync };
+  MailServices.accounts.addIncomingServerListener(listener);
+  win.addEventListener("unload", () => MailServices.accounts.removeIncomingServerListener(listener), { once: true });
 }
 
 /** The header as a card: initials, big subject, labelled buttons. Set once; the user may change it after. */
