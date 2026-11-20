@@ -52,6 +52,8 @@ export const NAMES = [
   "star", "view_kanban", "mood", "wallpaper", "restore_from_trash", "drag_indicator", "database", "checklist", "subdirectory_arrow_right", "add_notes",
   // browser
   "public", "tab", "history", "key", "print", "cookie", "delete_sweep",
+  // calendar
+  "sell", "notifications", "group", "location_on", "event", "today",
 ];
 
 // The Writer's ribbon, drawn thin like a word processor's (Material Symbols Outlined, weight 300),

@@ -182,6 +182,9 @@ function applyLayout(window, ctx) {
   const stopWeb = installWeb(window);
   const stopGroups = installToolGroups(window);
   const stopSearch = installSearch(window);
+  // The calendar tab's panel exists from the start; its views fill in when it is first shown.
+  let stopCalendar = () => {};
+  try { stopCalendar = installCalendar(window); } catch (error) { console.error("Mail Workspace: calendar", error); }
   dropEchoTooltips(window);
   // Refit when the window changes size (debounced to a frame).
   let pending = 0;
@@ -229,6 +232,7 @@ function applyLayout(window, ctx) {
     tabmail.unregisterTabMonitor(monitor);
     observer.disconnect();
     stopSearch();
+    stopCalendar();
     stopGroups();
     stopWeb();
     document.getElementById("mw-files-dock-button")?.remove();
