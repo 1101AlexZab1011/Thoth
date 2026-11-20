@@ -177,15 +177,29 @@ export function createEditing(engine, mupdf) {
     writer.close();
     const tmp = new mupdf.PDFDocument(buffer);
     try {
+      // The writer's page: its PDF space maps to page space by a flip and the page's offset.
+      return placePage(id, index, tmp, mupdf.Matrix.concat([1, 0, 0, -1, 0, H], mupdf.Matrix.translate(bx0, by0)));
+    } finally { tmp.destroy(); }
+  }
+
+  /**
+   * Put page 1 of another document on page `index` as a form XObject, drawn above what is there.
+   * `toPage` maps that page's PDF space to this page's space (MuPDF's, top left origin).
+   */
+  function placePage(id, index, tmp, toPage) {
+    const doc = docOf(id);
+    const page = pageOf(id, index);
+    {
       const tpage = tmp.findPage(0);
+      const box = tpage.getInheritable("MediaBox");
+      const [tx0, ty0, tx1, ty1] = [0, 1, 2, 3].map((k) => box.get(k).valueOf());
       const map = doc.newGraftMap();
       const resources = map.graftObject(tpage.get("Resources"));
       const contents = tpage.get("Contents");
       const chunks = [];
       if (contents.isArray()) contents.forEach((c) => chunks.push(c.readStream().asString())); else chunks.push(contents.readStream().asString());
-      const form = doc.addStream(chunks.join("\n"), { Type: doc.newName("XObject"), Subtype: doc.newName("Form"), BBox: [0, 0, W, H], Resources: resources });
-      // The writer's page: its PDF space maps to page space by a flip; then on into this page's PDF space.
-      const matrix = mupdf.Matrix.concat(mupdf.Matrix.concat([1, 0, 0, -1, 0, H], mupdf.Matrix.translate(bx0, by0)), mupdf.Matrix.invert(page.getTransform()));
+      const form = doc.addStream(chunks.join("\n"), { Type: doc.newName("XObject"), Subtype: doc.newName("Form"), BBox: [tx0, ty0, tx1, ty1], Resources: resources });
+      const matrix = mupdf.Matrix.concat(toPage, mupdf.Matrix.invert(page.getTransform()));
       const pobj = page.getObject();
       let res = pobj.getInheritable("Resources");
       if (res.isNull()) res = doc.newDictionary();
@@ -209,7 +223,7 @@ export function createEditing(engine, mupdf) {
       list.push(add);
       pobj.put("Contents", list);
       return name;
-    } finally { tmp.destroy(); }
+    }
   }
 
   /** Set `text` in a box: first baseline at `baseline`, lines `lineHeight` apart, `width` wide. */
@@ -369,7 +383,7 @@ export function createEditing(engine, mupdf) {
 
   const shrink = ([x0, y0, x1, y1]) => [x0 + 0.5, y0 + 0.5, x1 - 0.5, y1 - 0.5];
 
-  return { blocks, replaceText, addText, deleteText, moveImage, deleteImage, replaceImage, addImage };
+  return { blocks, replaceText, addText, deleteText, moveImage, deleteImage, replaceImage, addImage, placePage, walk };
 }
 
 function round(v) { return Math.round(v * 100) / 100; }

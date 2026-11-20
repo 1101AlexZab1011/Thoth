@@ -36,6 +36,7 @@ import { FileWriter, versionOf, waitForChange } from "./writes.mjs";
 import { Writer } from "./writer.mjs";
 import { Slides } from "./slides.mjs";
 import { Draw } from "./draw.mjs";
+import { PdfTools } from "./pdf.mjs";
 import { Notes } from "./notes.mjs";
 
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
@@ -110,6 +111,7 @@ export async function startHost({
   const documents = new Writer({ files: writer, cacheDir, log, configDir });
   const decks = new Slides({ files: writer });
   const drawings = new Draw({ files: writer });
+  const pdfTools = new PdfTools({ files: writer });
   const notes = new Notes({ files: writer, configDir });
 
   // --- auth: tokens are listener-mcp tokens, verified by the broker, cached briefly.
@@ -321,6 +323,23 @@ export async function startHost({
     fsWrite(principal);
     const { svg, source, out, format, dpi, textToPath } = await readJson(request, 96 * 1024 * 1024);
     return drawings.export({ svg, source, out, format, dpi, textToPath });
+  });
+  // PDF: OCR with Tesseract, Word and Excel exports (src/workspace/pdf.mjs).
+  route("GET", "/v1/pdf/ocr", async ({ principal }) => { need(principal, "read", "mail/workspace/files"); return pdfTools.ocrStatus(); });
+  route("POST", "/v1/pdf/ocr", async ({ request, principal }) => {
+    need(principal, "read", "mail/workspace/files");
+    const { pages, language } = await readJson(request, 256 * 1024 * 1024);
+    return pdfTools.ocr({ pages, language }).catch((error) => { throw new HttpError(error.status ?? 500, error.status === 424 ? "missing_program" : "ocr_failed", error.message); });
+  });
+  route("POST", "/v1/pdf/docx", async ({ request, principal }) => {
+    fsWrite(principal);
+    const { out, pages, title } = await readJson(request, 256 * 1024 * 1024);
+    return pdfTools.writeDocx({ out, pages, title });
+  });
+  route("POST", "/v1/pdf/xlsx", async ({ request, principal }) => {
+    fsWrite(principal);
+    const { out, sheets } = await readJson(request, 64 * 1024 * 1024);
+    return pdfTools.writeXlsx({ out, sheets });
   });
   route("POST", "/v1/draw/import-pdf", async ({ request, principal }) => {
     need(principal, "read", "mail/workspace/files");

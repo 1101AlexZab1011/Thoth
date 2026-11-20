@@ -72,6 +72,7 @@ const KNOWN = {
   inkscape: (env) => (isMac ? ["/Applications/Inkscape.app/Contents/MacOS/inkscape"] : isWindows ? programFiles(env, "Inkscape", "bin", "inkscape.exe") : []),
   soffice: (env) => (isMac ? ["/Applications/LibreOffice.app/Contents/MacOS/soffice"] : isWindows ? programFiles(env, "LibreOffice", "program", "soffice.exe") : []),
   quarto: (env) => (isMac ? ["/Applications/quarto/bin/quarto"] : isWindows ? programFiles(env, "Quarto", "bin", "quarto.exe") : []),
+  tesseract: (env) => (isMac ? ["/opt/homebrew/bin/tesseract", "/usr/local/bin/tesseract"] : isWindows ? programFiles(env, "Tesseract-OCR", "tesseract.exe") : []),
   java: (env) => (isWindows && env.JAVA_HOME ? [join(env.JAVA_HOME, "bin", "java.exe")] : env.JAVA_HOME ? [join(env.JAVA_HOME, "bin", "java")] : []),
 };
 

@@ -266,3 +266,45 @@ test("protect: redaction removes the text for good; sanitize; owner password", (
   const open = api.save(restricted, { encrypt: { method: "none" } });
   assert.equal(api.info(api.open(open).id).encrypted, false);
 });
+
+test("tools: content for Word, tables for Excel, an OCR layer, compression, compare", async () => {
+  const { id } = api.open(sample(["Name    Value    Unit"]));
+  api.addText(id, 0, [72, 100], { text: "Alpha", size: 12 });
+  api.addText(id, 0, [150, 100], { text: "12.5", size: 12 });
+  api.addText(id, 0, [230, 100], { text: "mg", size: 12 });
+  const [page] = api.exportContent(id);
+  assert.ok(page.items.some((it) => it.type === "text" && it.runs.some((r) => r.text.includes("Alpha"))));
+  const [table] = api.exportTables(id);
+  const alpha = table.rows.find((r) => r.includes("Alpha"));
+  assert.ok(alpha, JSON.stringify(table.rows));
+  assert.ok(alpha.includes(12.5), "numbers become numbers");
+
+  // OCR: a page of invisible text (render mode 3), as Tesseract writes it, laid over a page without text.
+  const { id: scan } = api.create({ width: 595, height: 842 });
+  assert.equal(api.hasText(scan, 0), false);
+  const layer = new mupdf.PDFDocument();
+  const font = layer.addSimpleFont(new mupdf.Font("Helvetica"));
+  layer.insertPage(-1, layer.addPage([0, 0, 1190, 1684], 0, { Font: { F1: font } }, "BT 3 Tr /F1 24 Tf 144 1500 Td (Recognised words from a scanned page) Tj ET"));
+  api.ocrLayer(scan, 0, layer.saveToBuffer("").asUint8Array().slice());
+  assert.equal(api.search(scan, "scanned page").length, 1);
+  const [hit] = api.search(scan, "Recognised");
+  assert.ok(hit.quads[0][0] > 60 && hit.quads[0][0] < 80, "scaled to the page");
+
+  // Compression: a big image shrinks.
+  const noise = new mupdf.Pixmap(mupdf.ColorSpace.DeviceRGB, [0, 0, 1200, 1200], false);
+  const px = noise.getPixels();
+  for (let i = 0; i < px.length; i++) px[i] = Math.random() * 256; // detail Flate cannot squeeze, as in a photo
+  const { id: heavy } = api.fromImages([noise.asPNG()]);
+  const before = api.save(heavy).length;
+  const r = api.compress(heavy, { dpi: 72, quality: 60 });
+  assert.equal(r.images, 1);
+  assert.ok(api.save(heavy, { garbage: true }).length < before / 2);
+
+  // Compare: a changed word, an added word.
+  const { id: v1 } = api.open(sample(["The quick brown fox"]));
+  const { id: v2 } = api.open(sample(["The slow brown fox jumps"]));
+  const result = api.compare(v1, v2);
+  const changes = result.pages[0].changes;
+  assert.deepEqual(changes.map((c) => [c.removed, c.added]), [["quick", "slow"], ["", "jumps"]]);
+  assert.ok(result.pages[0].boxes.length > 0);
+});

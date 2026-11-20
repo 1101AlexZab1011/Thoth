@@ -7,6 +7,7 @@ import { createForms } from "./forms.js";
 import { createPages } from "./pages.js";
 import { createEditing } from "./editing.js";
 import { createSecurity } from "./security.js";
+import { createConvert } from "./convert.js";
 
 /** @param {typeof import("mupdf")} mupdf */
 export function createApi(mupdf) {
@@ -15,6 +16,7 @@ export function createApi(mupdf) {
   const forms = createForms(engine, mupdf);
   const editing = createEditing(engine, mupdf);
   const security = createSecurity(engine);
+  const convert = createConvert(engine, mupdf, editing);
 
   /** One new document from the pages of several PDFs (`pages`: indexes to take, all by default). */
   function combine(sources) {
@@ -130,6 +132,13 @@ export function createApi(mupdf) {
     redactApply: (id, options) => security.apply(id, options),
     unlock: (id, password) => security.unlock(id, password),
     sanitize: (id, options) => security.sanitize(id, options),
+    // tools
+    exportContent: (id, options) => convert.content(id, options),
+    exportTables: (id, options) => convert.tables(id, options),
+    ocrLayer: (id, page, bytes) => convert.ocrLayer(id, page, bytes),
+    hasText: (id, page) => convert.hasText(id, page),
+    compress: (id, options) => convert.compress(id, options),
+    compare: (oldId, newId) => convert.compare(oldId, newId),
     // new documents
     combine,
     fromImages,
