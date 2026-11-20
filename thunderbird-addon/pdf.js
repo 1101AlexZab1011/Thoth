@@ -499,10 +499,23 @@ function renderRibbon() {
   ui.rbTabs.replaceChildren(
     h("button.rb-tab", { type: "button", role: "tab", onclick: () => backstage.show("info") }, "File"),
     ...ribbonTabs.map(({ name }) => h(`button.rb-tab${name === ribbonTab ? ".active" : ""}`, { type: "button", role: "tab", "aria-selected": String(name === ribbonTab), onclick: () => selectRibbon(name) }, name)));
+  // The active tab in view, scrolling only the tab strip (a narrow window).
+  const active = ui.rbTabs.querySelector(".rb-tab.active");
+  const strip = ui.rbTabs;
+  if (active && strip.scrollWidth > strip.clientWidth) {
+    if (active.offsetLeft < strip.scrollLeft) strip.scrollLeft = active.offsetLeft;
+    else if (active.offsetLeft + active.offsetWidth > strip.scrollLeft + strip.clientWidth) strip.scrollLeft = active.offsetLeft + active.offsetWidth - strip.clientWidth;
+  }
   const spec = ribbonTabs.find((r) => r.name === ribbonTab) ?? ribbonTabs[0];
   const rows = h("div.tb-rows", {}, ...spec.build().filter(Boolean));
   ui.toolbar.replaceChildren(rows);
 }
+// A wheel over the tabs scrolls them sideways when they do not fit.
+ui.rbTabs.addEventListener("wheel", (event) => {
+  if (ui.rbTabs.scrollWidth <= ui.rbTabs.clientWidth || Math.abs(event.deltaX) > Math.abs(event.deltaY)) return;
+  ui.rbTabs.scrollLeft += event.deltaY;
+  event.preventDefault();
+}, { passive: false });
 
 function selectRibbon(name) {
   const changedTab = name !== ribbonTab;

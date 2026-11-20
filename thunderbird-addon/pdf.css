@@ -24,16 +24,19 @@ body.pd { display: flex; flex-direction: column; background: var(--pd-chrome); c
 [hidden] { display: none !important; }
 
 /* --- header: ribbon tabs, the document's name -------------------------------------- */
-.pd-header { flex: none; height: 34px; display: flex; align-items: stretch; gap: 8px; padding: 0 12px 0 8px; }
+.pd-header { flex: none; height: 34px; display: flex; align-items: stretch; gap: 8px; padding: 0 12px 0 8px; min-width: 0; }
 .pd-header .spacer { flex: 1; }
-.rb-tabs { display: flex; align-items: stretch; }
+/* In a narrow window the tabs scroll by themselves (a wheel or the active tab brought into view),
+   so the page never moves sideways. */
+.rb-tabs { position: relative; display: flex; align-items: stretch; flex: 0 1 auto; min-width: 0; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
+.rb-tab { flex: none; }
 .rb-tab { position: relative; padding: 0 12px; border: 0; background: none; color: var(--pd-text); font: 13.5px var(--mw-font); cursor: pointer; white-space: nowrap; }
 .rb-tab::after { content: ""; position: absolute; left: 8px; right: 8px; bottom: 3px; height: 2px; border-radius: 1px; background: transparent; transition: background var(--mw-fast) var(--mw-ease); }
 .rb-tab:hover::after { background: var(--mw-border-strong); }
 .rb-tab.active { color: var(--pd-accent); }
 .rb-tab.active::after { background: var(--pd-accent); }
 .rb-tab:focus-visible { outline: none; box-shadow: var(--mw-focus); border-radius: var(--mw-radius-s); }
-.pd-title { align-self: center; max-width: 40vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13.5px; }
+.pd-title { align-self: center; max-width: 40vw; min-width: 0; flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13.5px; }
 .pd-header .chip { align-self: center; }
 .chip.unsaved { background: var(--mw-surface-3); color: var(--mw-text-2); }
 
@@ -161,10 +164,12 @@ body.pd { display: flex; flex-direction: column; background: var(--pd-chrome); c
 .pd-results .page-head { padding: 8px 8px 2px; color: var(--pd-muted); font: 600 11.5px var(--mw-font); text-transform: uppercase; letter-spacing: 0.03em; }
 
 /* --- status bar ------------------------------------------------------------------- */
-.statusbar { flex: none; height: 30px; display: flex; align-items: center; background: var(--pd-card); border-top: 1px solid var(--pd-border); font-size: 12.5px; position: relative; z-index: 5; }
-.statusbar .sb-group { display: inline-flex; align-items: center; gap: 4px; padding: 0 8px; }
+.statusbar { flex: none; height: 30px; display: flex; align-items: center; background: var(--pd-card); border-top: 1px solid var(--pd-border); font-size: 12.5px; position: relative; z-index: 5; min-width: 0; overflow: hidden; white-space: nowrap; }
+.statusbar .sb-group { flex: none; display: inline-flex; align-items: center; gap: 4px; padding: 0 8px; }
+/* A narrow window keeps the page controls and the zoom; the message and the tool's name go. */
+@media (max-width: 560px) { .statusbar #sb-tool { display: none; } .statusbar .sb-group { padding: 0 4px; } }
 .statusbar .sb-group + .sb-group, .statusbar .sb-message + .sb-group { border-left: 1px solid var(--pd-sep); }
-.statusbar .sb-message { flex: 1; text-align: center; color: var(--pd-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 10px; }
+.statusbar .sb-message { flex: 1; min-width: 0; text-align: center; color: var(--pd-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 10px; }
 .statusbar .sb-ico { width: 28px; height: 24px; display: grid; place-items: center; border: 0; border-radius: var(--mw-radius-s); background: none; color: var(--pd-icon); cursor: pointer; }
 .statusbar .sb-ico .icon { width: 18px; height: 18px; }
 .statusbar .sb-ico:hover { background: var(--mw-hover); color: var(--pd-text); }
