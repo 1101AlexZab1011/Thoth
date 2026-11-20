@@ -2,10 +2,12 @@
 // and the documents the home creates (combining files, images to pages). The worker serves these
 // to the page; the tests call them directly.
 import { createEngine } from "./engine.js";
+import { createAnnotations } from "./annotations.js";
 
 /** @param {typeof import("mupdf")} mupdf */
 export function createApi(mupdf) {
   const engine = createEngine(mupdf);
+  const annots = createAnnotations(engine);
 
   /** One new document from the pages of several PDFs (`pages`: indexes to take, all by default). */
   function combine(sources) {
@@ -77,6 +79,14 @@ export function createApi(mupdf) {
     redo: (id) => engine.redo(id),
     save: (id, options) => engine.save(id, options),
     setMeta: (id, changes) => engine.setMeta(id, changes),
+    // comments
+    annotList: (id, options) => annots.list(id, options),
+    annotThreads: (id) => annots.threads(id),
+    annotAdd: (id, page, spec) => annots.add(id, page, spec),
+    annotUpdate: (id, ref, changes, options) => annots.update(id, ref, changes, options),
+    annotRemove: (id, ref) => annots.remove(id, ref),
+    annotReply: (id, ref, reply) => annots.reply(id, ref, reply),
+    annotState: (id, ref, state, options) => annots.setState(id, ref, state, options),
     // new documents
     combine,
     fromImages,

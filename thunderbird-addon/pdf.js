@@ -873,7 +873,7 @@ const ctx = {
 globalThis.pdfSpace = ctx; // for debugging in the page
 
 // The parts of the space, each adding its ribbon tab, tools, panels and agent commands.
-const PARTS = [];
+const PARTS = ["./pdf/comment.js"];
 for (const part of PARTS) {
   try { (await import(part)).install(ctx); }
   catch (error) { console.error(`Thoth PDF: ${part}`, error); }

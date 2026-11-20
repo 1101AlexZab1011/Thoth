@@ -80,3 +80,41 @@ test("combines documents and images into a new one", () => {
   const { id: images } = api.fromImages([png, png]);
   assert.equal(api.info(images).pages.length, 2);
 });
+
+test("comments: markup, notes, shapes, replies, states, moves and deletes", () => {
+  const { id } = api.open(sample(["Hello Thoth PDF"]));
+  const [hit] = api.search(id, "Thoth");
+  const { ref: mark } = api.annotAdd(id, 0, { type: "Highlight", quads: hit.quads, color: "#ffeb3b", author: "Ada" });
+  const { ref: note } = api.annotAdd(id, 0, { type: "Text", point: [300, 100], contents: "Check this", author: "Ada" });
+  const { ref: box } = api.annotAdd(id, 0, { type: "Square", rect: [100, 200, 200, 260], color: "#ff0000", width: 2 });
+  api.annotAdd(id, 0, { type: "Ink", ink: [[[100, 300], [120, 320], [140, 300]]], color: "#0000ff", width: 3 });
+  api.annotAdd(id, 0, { type: "FreeText", rect: [100, 400, 300, 440], contents: "A text box", fontSize: 14 });
+  api.annotAdd(id, 0, { type: "Stamp", rect: [300, 500, 450, 550], icon: "Approved" });
+  const list = api.annotList(id, { text: true });
+  assert.equal(list.length, 6);
+  const highlight = list.find((a) => a.ref === mark);
+  assert.equal(highlight.type, "Highlight");
+  assert.equal(highlight.text, "Thoth");
+  assert.equal(highlight.color, "#ffeb3b");
+  assert.equal(list.find((a) => a.ref === note).contents, "Check this");
+
+  api.annotReply(id, note, { text: "Done", author: "Bob" });
+  api.annotState(id, note, "Completed", { author: "Bob" });
+  const thread = api.annotThreads(id).find((t) => t.ref === note);
+  assert.equal(thread.replies.length, 1);
+  assert.equal(thread.replies[0].contents, "Done");
+  assert.equal(thread.replies[0].author, "Bob");
+  assert.equal(thread.status, "Completed");
+  assert.equal(api.annotThreads(id).length, 6, "replies and states are not threads of their own");
+
+  api.annotUpdate(id, box, { move: [10, 20], color: "#00ff00" });
+  const moved = api.annotList(id).find((a) => a.ref === box);
+  assert.deepEqual(moved.rect.map(Math.round), [110, 220, 210, 280]);
+  assert.equal(moved.color, "#00ff00");
+
+  const { deleted } = api.annotRemove(id, note);
+  assert.equal(deleted.length, 3, "the note, its reply and its state");
+  const saved = api.save(id);
+  const { id: again } = api.open(saved);
+  assert.equal(api.annotList(again).length, 5);
+});
