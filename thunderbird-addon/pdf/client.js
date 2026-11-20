@@ -8,9 +8,20 @@ const pending = new Map();
 function start() {
   if (worker) return ready;
   worker = new Worker(new URL("./worker.js", import.meta.url), { type: "module" });
+  const started = worker;
   ready = new Promise((resolve, reject) => {
-    worker.addEventListener("error", (event) => reject(new Error(event.message || "The PDF engine did not start")), { once: true });
-    worker.addEventListener("message", function first(event) { if (event.data?.ready) { worker.removeEventListener("message", first); resolve(); } });
+    const fail = (reason) => {
+      console.error("Thoth PDF: the engine did not start:", reason);
+      // The next call starts a fresh worker instead of failing for good.
+      if (worker === started) { worker = null; ready = null; }
+      started.terminate();
+      reject(new Error(`The PDF engine did not start (${reason})`));
+    };
+    started.addEventListener("error", (event) => fail(event.message || "the worker failed to load"), { once: true });
+    started.addEventListener("message", function first(event) {
+      if (event.data?.ready) { started.removeEventListener("message", first); resolve(); }
+      else if (event.data?.failed) { started.removeEventListener("message", first); fail(event.data.failed); }
+    });
   });
   worker.addEventListener("message", (event) => {
     const { id, result, error } = event.data ?? {};

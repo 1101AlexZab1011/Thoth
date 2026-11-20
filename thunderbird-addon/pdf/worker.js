@@ -1,10 +1,9 @@
 // The PDF space's worker: MuPDF (WebAssembly) and the open documents live here, off the page's
 // thread. The page calls the API (pdf/api.js) by name through pdf/client.js; pixels and bytes
 // travel back as transferred buffers.
-import * as mupdf from "../vendor/mupdf/mupdf.js";
-import { createApi } from "./api.js";
-
-const api = createApi(mupdf);
+// MuPDF is imported dynamically so that a failure to load it (or the WebAssembly) reaches the page
+// with its reason, which a worker's error event does not carry.
+let api = null;
 
 /** Buffers in a result that can move to the page instead of being copied. */
 function transferables(value, out = []) {
@@ -26,4 +25,11 @@ self.onmessage = (event) => {
     self.postMessage({ id, error: { message: error?.message ?? String(error), name: error?.name } });
   }
 };
-self.postMessage({ ready: true });
+try {
+  const mupdf = await import("../vendor/mupdf/mupdf.js");
+  const { createApi } = await import("./api.js");
+  api = createApi(mupdf);
+  self.postMessage({ ready: true });
+} catch (error) {
+  self.postMessage({ failed: `${error?.name ?? "Error"}: ${error?.message ?? error}` });
+}
