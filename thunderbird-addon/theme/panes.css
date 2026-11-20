@@ -84,10 +84,12 @@
   background: var(--mw-primary-soft) !important;
   border-color: color-mix(in srgb, var(--mw-primary) 55%, transparent) !important;
 }
-#threadTree tr[is="thread-card"] .sender { font-weight: 600; }
+/* Read: regular weight, muted. Unread (below): bold sender and subject, and the dot. */
+#threadTree tr[is="thread-card"] .sender { font-weight: 400 !important; color: var(--mw-text-2); }
+#threadTree tr[is="thread-card"] .subject { font-weight: 400 !important; }
 #threadTree tr[is="thread-card"][data-properties~="unread"] .card-container { box-shadow: inset 3px 0 0 var(--mw-primary) !important; }
-#threadTree tr[is="thread-card"][data-properties~="unread"] .sender,
-#threadTree tr[is="thread-card"][data-properties~="unread"] .subject { font-weight: 700; }
+#threadTree tr[is="thread-card"][data-properties~="unread"] .sender { font-weight: 700 !important; color: var(--mw-text); }
+#threadTree tr[is="thread-card"][data-properties~="unread"] .subject { font-weight: 600 !important; color: var(--mw-text); }
 #threadTree tr[is="thread-card"] .date { color: var(--mw-text-3) !important; font-size: 0.9em; }
 #threadTree tr[is="thread-card"] .subject { color: var(--mw-text-2); }
 #threadTree tr[is="thread-card"].selected .subject { color: var(--mw-text); }
@@ -191,3 +193,105 @@
 :root[mw-mail] #quickFilterBarContainer .quickFilterButtons > button > span { visibility: visible !important; width: auto !important; overflow: visible !important; }
 :root[mw-mail] #quickFilterBarContainer .quickFilterButtons > button { overflow: visible !important; }
 :root[mw-mail] .quickFilterButtons > button::before { display: none !important; }
+
+/* --- The conversation summary (multimessageview: a collapsed thread or several messages chosen):
+   a header card (subject, up to two lines; a count chip; Archive, Delete and the star as pills
+   on a row under it) and each message as a small card, read and unread as in the list. ---- */
+:root:has(#headingWrapper) body { background: var(--mw-bg) !important; font-family: var(--mw-font) !important; color: var(--mw-text); }
+#headingWrapper {
+  flex-direction: column-reverse !important; align-items: stretch !important; gap: 12px !important;
+  margin: 12px 12px 10px; padding: 16px 18px 14px !important;
+  background: var(--mw-surface) !important; border: 1px solid var(--mw-border) !important; border-radius: var(--mw-radius-l);
+  box-shadow: var(--mw-shadow-1); color: var(--mw-text) !important;
+}
+#headingWrapper #heading { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+#headingWrapper #summaryTitle {
+  font: 650 19px/1.3 var(--mw-font); color: var(--mw-text); overflow-wrap: anywhere;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+#headingWrapper #summarySubtitle {
+  display: inline-flex; align-items: center; height: 24px; margin: 0 !important; padding: 0 10px; border-radius: var(--mw-radius-pill);
+  background: var(--mw-surface-2); color: var(--mw-text-2); font: 560 12px var(--mw-font);
+}
+#headingWrapper #summarySubtitle:empty { display: none; }
+#headingWrapper #header-view-toolbox { display: block; }
+#headingWrapper #header-view-toolbar { display: flex !important; flex-wrap: wrap; align-items: center; gap: 8px !important; padding: 0 !important; margin: 0 !important; }
+#headingWrapper #header-view-toolbar toolbarbutton {
+  appearance: none !important; height: 32px; margin: 0 !important; padding: 0 14px !important; gap: 6px;
+  border: 1px solid var(--mw-border-strong) !important; border-radius: var(--mw-radius-pill) !important;
+  background: var(--mw-surface) !important; color: var(--mw-text) !important; font: 560 13px var(--mw-font) !important;
+  -moz-context-properties: fill, stroke; fill: currentColor; stroke: currentColor; box-shadow: none !important;
+}
+#headingWrapper #header-view-toolbar toolbarbutton:hover { background: var(--mw-surface-2) !important; }
+#headingWrapper #header-view-toolbar toolbarbutton .toolbarbutton-text { display: inline !important; color: inherit !important; }
+#headingWrapper #hdrTrashButton { border-color: transparent !important; background: var(--mw-danger-soft) !important; color: var(--mw-danger) !important; }
+#headingWrapper #hdrTrashButton:hover { background: color-mix(in srgb, var(--mw-danger) 18%, var(--mw-surface)) !important; }
+#headingWrapper #starMessageButton {
+  width: 32px; height: 32px; margin: 0 0 0 auto !important; padding: 0 !important; display: grid; place-items: center;
+  border: 0 !important; border-radius: var(--mw-radius-pill) !important; background: transparent !important; -moz-context-properties: fill, stroke; fill: var(--mw-text-3); stroke: var(--mw-text-3);
+}
+#headingWrapper #starMessageButton:hover { background: var(--mw-hover) !important; }
+#headingWrapper #starMessageButton[aria-pressed="true"] { fill: #e3a008; stroke: #e3a008; }
+:root:has(#headingWrapper) #content { padding: 0 12px 12px !important; }
+:root:has(#headingWrapper) #messageList > li {
+  margin: 0 0 6px !important; padding: 10px 14px 10px 28px !important; border: 1px solid var(--mw-border) !important; border-radius: var(--mw-radius);
+  background: var(--mw-surface);
+}
+:root:has(#headingWrapper) #messageList > li:hover { border-color: var(--mw-border-strong) !important; }
+:root:has(#headingWrapper) #messageList > li.unread::before {
+  content: "" !important; position: absolute; inset-inline-start: 11px !important; inset-block-start: 17px !important; width: 8px; height: 8px; border-radius: 50%; background: var(--mw-primary);
+}
+:root:has(#headingWrapper) #messageList .star { inset-inline-start: auto !important; inset-inline-end: 8px; inset-block-start: 8px !important; }
+:root:has(#headingWrapper) #messageList .starred .item-header { padding-inline-end: 20px; }
+:root:has(#headingWrapper) .item-header { padding-block: 0 !important; font: 13.5px var(--mw-font) !important; align-items: center !important; }
+:root:has(#headingWrapper) .item-header .link { font-weight: 400 !important; color: var(--mw-text-2) !important; text-decoration: none !important; }
+:root:has(#headingWrapper) .item-header .link:hover { color: var(--mw-primary-soft-text) !important; text-decoration: underline !important; }
+:root:has(#headingWrapper) li.unread .item-header .link { font-weight: 700 !important; color: var(--mw-text) !important; }
+:root:has(#headingWrapper) .item-header .date, :root:has(#headingWrapper) .item-header > .author, :root:has(#headingWrapper) .count { font-size: 12px; color: var(--mw-text-3) !important; white-space: nowrap; }
+:root:has(#headingWrapper) .snippet {
+  margin: 4px 0 0 !important; font: 13px/1.45 var(--mw-font); color: var(--mw-text-2) !important;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+:root:has(#headingWrapper) #footer { padding: 4px 2px; }
+:root:has(#headingWrapper) #footer .info { font: 12px var(--mw-font); color: var(--mw-text-3); }
+#headingWrapper #header-view-toolbox { width: 100%; }
+#headingWrapper #header-view-toolbar { justify-content: flex-start !important; flex-wrap: nowrap !important; width: 100%; }
+#headingWrapper #header-view-toolbar toolbarbutton { flex: none; }
+:root:has(#headingWrapper) .item-header .left-block { min-width: 0; }
+:root:has(#headingWrapper) .item-header .link { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; inline-size: auto !important; }
+
+/* The message header card, top to bottom: the subject; the sender (initials, name, address) and
+   the date; the recipients; then the actions as a wrapping row of labelled pills. The grid's one
+   column fits the pane (it took the toolbar's width and spilled out of the card). */
+:root[mw-mail] #messageHeader { grid-template-columns: minmax(0, 1fr) !important; box-sizing: border-box; row-gap: 4px !important; }
+:root[mw-mail] #headerSenderToolbarContainer { display: contents !important; }
+:root[mw-mail] #headerSubjectSecurityContainer { order: -3; margin: 0 0 8px !important; }
+:root[mw-mail] #expandedsubjectBox { overflow-wrap: anywhere; }
+:root[mw-mail] #expandedfromRow { order: -2; min-width: 0; }
+:root[mw-mail] #expandedtoRow { order: -1; display: flex !important; flex-wrap: wrap; align-items: baseline; column-gap: 12px; min-width: 0; }
+:root[mw-mail] #expandedtoRow > .header-row-grow { flex: 1 1 160px; min-width: 0; }
+:root[mw-mail] .multi-recipient-row { min-width: 0; }
+:root[mw-mail] .recipients-list { min-width: 0; }
+:root[mw-mail] .recipients-list li { overflow-wrap: normal !important; word-break: normal !important; }
+:root[mw-mail] #dateLabel { color: var(--mw-text-3) !important; font: 12.5px var(--mw-font) !important; white-space: nowrap; margin-inline-start: auto; }
+:root[mw-mail] #header-view-toolbox { order: 10; margin: 10px 0 0 !important; padding: 10px 0 0 !important; border-top: 1px solid var(--mw-border); width: auto !important; }
+:root[mw-mail] #header-view-toolbar {
+  display: flex !important; flex-wrap: wrap !important; justify-content: flex-start !important; align-items: center; gap: 6px !important; margin: 0 !important; padding: 0 !important;
+}
+:root[mw-mail] #header-view-toolbar toolbarbutton, :root[mw-mail] #header-view-toolbar .toolbarbutton-1 {
+  appearance: none !important; height: 30px; margin: 0 !important; padding: 0 12px !important; flex: none;
+  border: 1px solid var(--mw-border-strong) !important; background: var(--mw-surface) !important; box-shadow: none !important;
+}
+:root[mw-mail] #header-view-toolbar toolbarbutton:hover { background: var(--mw-surface-2) !important; }
+:root[mw-mail] #header-view-toolbar #hdrTrashButton { border-color: transparent !important; background: var(--mw-danger-soft) !important; }
+:root[mw-mail] #header-view-toolbar toolbarbutton[type="menu"], :root[mw-mail] #header-view-toolbar .toolbarbutton-menubutton-dropmarker { padding-inline: 8px !important; }
+:root[mw-mail] #header-view-toolbar :is(#hdrReplyToSenderButton, #hdrReplyAllButton, #hdrReplyButton, #hdrReplyListButton, #hdrFollowupButton) {
+  border-color: transparent !important; background: var(--mw-primary-soft) !important; color: var(--mw-primary-soft-text) !important;
+}
+/* Reply all ▾ is one pill: the inner button and the dropmarker draw no boxes of their own. */
+:root[mw-mail] #header-view-toolbar #hdrSmartReplyButton { display: flex; gap: 6px; margin: 0 !important; }
+:root[mw-mail] #header-view-toolbar .toolbarbutton-menubutton-button,
+:root[mw-mail] #header-view-toolbar .toolbarbutton-menubutton-dropmarker {
+  appearance: none !important; border: 0 !important; background: none !important; box-shadow: none !important; margin: 0 !important; padding: 0 !important; height: auto;
+}
+:root[mw-mail] #header-view-toolbar .toolbarbutton-menubutton-dropmarker { margin-inline-start: 4px !important; }

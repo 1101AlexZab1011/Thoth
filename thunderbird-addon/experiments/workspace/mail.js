@@ -14,6 +14,26 @@ function mailPaneBehaviour(doc) {
   const ready = (fn) => (doc.readyState === "complete" ? fn() : win.addEventListener("load", fn, { once: true }));
   if (/^about:3pane/.test(doc.documentURI)) ready(() => { try { mailListBar(doc); } catch (error) { console.error("Mail Workspace: mail list", error); } });
   if (/^about:message/.test(doc.documentURI)) ready(() => { try { mailHeaderLayout(doc); } catch (error) { console.error("Mail Workspace: message header", error); } });
+  if (/multimessageview\.xhtml/.test(doc.documentURI)) ready(() => { try { mailSummary(doc); } catch (error) { console.error("Mail Workspace: summary", error); } });
+}
+
+/** The conversation summary: senders by name (the address on hover), as in the list. */
+function mailSummary(doc) {
+  const win = doc.defaultView;
+  const list = doc.getElementById("messageList");
+  if (!list) return;
+  const names = () => {
+    for (const node of list.querySelectorAll(".author")) {
+      const text = node.textContent.trim();
+      const match = /^"?(.+?)"?\s*<([^>]+)>$/.exec(text);
+      if (!match) continue;
+      node.textContent = match[1];
+      if (node.getAttribute("title") !== match[2]) node.setAttribute("title", match[2]);
+    }
+  };
+  names();
+  // Rewriting a name is itself a change to the list; the regex no longer matches it, so this settles.
+  new win.MutationObserver(names).observe(list, { childList: true, subtree: true, characterData: true });
 }
 
 /** The quick filter bar, always shown, as a search field and chips; "All" clears the filters. */

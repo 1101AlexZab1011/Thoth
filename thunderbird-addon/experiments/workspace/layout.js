@@ -271,7 +271,7 @@ function removeLayout(window, sheetUrl) {
 // address book documents inside it get panes.css. Both build on the same
 // tokens, and both are removed again when the add-on stops.
 
-var PANE_DOCS = /^about:(3pane|message|addressbook)/;
+var PANE_DOCS = /^(about:(3pane|message|addressbook)|chrome:\/\/messenger\/content\/multimessageview\.xhtml)/;
 var themeObserver = null;
 var themedDocs = new Set();
 
