@@ -6,6 +6,7 @@ import { createAnnotations } from "./annotations.js";
 import { createForms } from "./forms.js";
 import { createPages } from "./pages.js";
 import { createEditing } from "./editing.js";
+import { createSecurity } from "./security.js";
 
 /** @param {typeof import("mupdf")} mupdf */
 export function createApi(mupdf) {
@@ -13,6 +14,7 @@ export function createApi(mupdf) {
   const annots = createAnnotations(engine);
   const forms = createForms(engine, mupdf);
   const editing = createEditing(engine, mupdf);
+  const security = createSecurity(engine);
 
   /** One new document from the pages of several PDFs (`pages`: indexes to take, all by default). */
   function combine(sources) {
@@ -120,6 +122,14 @@ export function createApi(mupdf) {
     deleteImage: (id, page, ref) => editing.deleteImage(id, page, ref),
     replaceImage: (id, page, ref, bytes) => editing.replaceImage(id, page, ref, bytes),
     addImage: (id, page, rect, bytes) => editing.addImage(id, page, rect, bytes),
+    // protect
+    redactMark: (id, page, spec) => security.mark(id, page, spec),
+    redactSearch: (id, needle, options) => security.markSearch(id, needle, options),
+    redactMarks: (id) => security.marks(id),
+    redactRemove: (id, ref) => security.removeMark(id, ref),
+    redactApply: (id, options) => security.apply(id, options),
+    unlock: (id, password) => security.unlock(id, password),
+    sanitize: (id, options) => security.sanitize(id, options),
     // new documents
     combine,
     fromImages,

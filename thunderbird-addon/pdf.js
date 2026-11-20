@@ -81,6 +81,12 @@ function showNotice(message, buttons = [], kind = "") {
 }
 function hideNotice() { ui.notice.hidden = true; }
 
+/** A document whose author restricted changes says so (Protect → Remove security lifts it). */
+function noteRestrictions(t) {
+  if (t.info.permissions.edit && t.info.permissions.annotate) return;
+  showNotice("The document's author restricted what may be changed here; Protect → Remove security with the owner password lifts it.", [], "info");
+}
+
 // ------------------------------------------------------------------ tabs --
 
 /** Open bytes in the engine, asking for the password of a locked file. */
@@ -152,9 +158,7 @@ const tabs = new DocTabs({
       if (t.conflictOnShow) {
         t.conflictOnShow = false;
         showNotice("This file changed on disk while it had unsaved changes here; your version is kept. Save to overwrite it, or reload.", [["Reload from disk", () => void reload(t)]]);
-      } else if (!t.info.permissions.edit || !t.info.permissions.annotate) {
-        showNotice("The document's author restricted what may be changed here; Protect → Remove security with the owner password lifts it.", [], "info");
-      }
+      } else noteRestrictions(t);
       if (panels.open) panels.refresh();
       renderRibbon();
       renderStatus();
@@ -224,7 +228,7 @@ async function reload(t = tab) {
   await loadInfo(t);
   t.rewrite = false;
   tabs.setDirty(t, false);
-  if (t === tab) { view.build(t); hideNotice(); renderRibbon(); renderStatus(); if (panels.open) panels.refresh(); }
+  if (t === tab) { view.build(t); hideNotice(); noteRestrictions(t); renderRibbon(); renderStatus(); if (panels.open) panels.refresh(); }
 }
 
 // ------------------------------------------------------------------ save --
@@ -239,13 +243,14 @@ async function save(t = tab, { force = false } = {}) {
   saving = (async () => {
     setState("saving");
     try {
-      const bytes = await call("save", t.docId, t.rewrite ? { garbage: true, compress: true } : { incremental: true });
+      const bytes = await call("save", t.docId, saveOptions(t));
       const result = await writeBytes(t.path, bytes, force ? {} : { expect: t.hash });
       t.hash = result.hash;
       t.size = bytes.length;
       t.rewrite = false;
       tabs.saved(t);
       setState(null);
+      await afterEncrypt(t);
       if (t === tab) { hideNotice(); setMessage("All changes saved"); }
       return { saved: true, path: t.path, size: bytes.length };
     } catch (error) {
@@ -261,6 +266,23 @@ async function save(t = tab, { force = false } = {}) {
   try { return await saving; } finally { saving = null; }
 }
 
+/**
+ * How to write a tab: incrementally when nothing requires a rewrite; rewritten (garbage collected)
+ * after redaction or sanitizing, under a new name, or with new passwords (`t.encrypt`, see protect.js).
+ */
+function saveOptions(t, full = false) {
+  if (t.encrypt) return { garbage: true, compress: true, encrypt: t.encrypt };
+  return full || t.rewrite ? { garbage: true, compress: true } : { incremental: true };
+}
+
+/** New passwords were written: open the file again as it now is (encrypted, or no longer). */
+async function afterEncrypt(t) {
+  if (!t.encrypt) return;
+  t.password = t.encrypt.method === "none" ? undefined : t.encrypt.user || undefined;
+  t.encrypt = null;
+  await reload(t);
+}
+
 /** Save under a new name; the tab then edits that file. */
 async function saveAs(t = tab, path) {
   if (!t) return { saved: false };
@@ -268,7 +290,7 @@ async function saveAs(t = tab, path) {
   if (!path) return { saved: false };
   const file = isPdf(path) ? path : `${path}.pdf`;
   try {
-    const bytes = await call("save", t.docId, { garbage: true, compress: true });
+    const bytes = await call("save", t.docId, saveOptions(t, true));
     const result = await writeBytes(file, bytes, { expect: "absent", createDirs: true });
     await tabs.dropDraft(t);
     t.path = result.path;
@@ -279,16 +301,18 @@ async function saveAs(t = tab, path) {
     tabs.saved(t);
     if (t === tab) { ui.title.textContent = displayName(t); ui.title.title = tildePath(t.path); document.title = `${displayName(t)} · PDF`; }
     await remember(t.path);
+    await afterEncrypt(t);
     toast(`Saved ${nameOf(t.path)}`);
     return { saved: true, path: t.path };
   } catch (error) {
     if (error.status === 409) {
       const replace = await dialog({ title: "Replace the file?", message: `${nameOf(file)} already exists. Replace it?`, ok: "Replace", danger: true });
       if (replace) {
-        const bytes = await call("save", t.docId, { garbage: true, compress: true });
+        const bytes = await call("save", t.docId, saveOptions(t, true));
         const result = await writeBytes(file, bytes, { createDirs: true });
         Object.assign(t, { path: result.path, hash: result.hash, size: bytes.length, rewrite: false, created: false });
         tabs.saved(t);
+        await afterEncrypt(t);
         if (t === tab) { ui.title.textContent = displayName(t); document.title = `${displayName(t)} · PDF`; }
         return { saved: true, path: t.path };
       }
@@ -873,7 +897,7 @@ const ctx = {
 globalThis.pdfSpace = ctx; // for debugging in the page
 
 // The parts of the space, each adding its ribbon tab, tools, panels and agent commands.
-const PARTS = ["./pdf/comment.js", "./pdf/fill.js", "./pdf/organize.js", "./pdf/edit.js"];
+const PARTS = ["./pdf/comment.js", "./pdf/fill.js", "./pdf/organize.js", "./pdf/edit.js", "./pdf/protect.js"];
 for (const part of PARTS) {
   try { (await import(part)).install(ctx); }
   catch (error) { console.error(`Thoth PDF: ${part}`, error); }

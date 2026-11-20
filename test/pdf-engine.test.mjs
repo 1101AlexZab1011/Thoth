@@ -233,3 +233,36 @@ test("editing: paragraphs are rewritten in place, images moved, replaced, added 
   const { id: again } = api.open(api.save(id));
   assert.match(api.plainText(again)[0].text, /Привет, Thoth ✓ edited/);
 });
+
+test("protect: redaction removes the text for good; sanitize; owner password", () => {
+  const { id } = api.open(sample(["Secret number 4711 and public words"]));
+  const [hit] = api.search(id, "4711");
+  api.redactMark(id, 0, { quads: hit.quads });
+  assert.equal(api.redactSearch(id, "secret").marked, 1);
+  assert.equal(api.redactMarks(id).length, 2);
+  assert.match(api.plainText(id)[0].text, /4711/, "marks alone remove nothing");
+  api.redactApply(id);
+  assert.equal(api.redactMarks(id).length, 0);
+  const saved = api.save(id, { garbage: true });
+  const { id: again } = api.open(saved);
+  const text = api.plainText(again)[0].text;
+  assert.doesNotMatch(text, /4711|Secret/);
+  assert.match(text, /public words/);
+  assert.ok(!new TextDecoder("latin1").decode(saved).includes("4711"), "nothing of it is left in the file");
+
+  api.setMeta(again, { title: "Hidden", author: "Someone" });
+  api.annotAdd(again, 0, { type: "Text", point: [10, 10], contents: "note" });
+  const removed = api.sanitize(again, { comments: true });
+  assert.ok(removed.metadata >= 2);
+  assert.equal(removed.comments, 1);
+  assert.equal(api.info(again).meta.author, "");
+
+  const locked = api.save(again, { encrypt: { user: "", owner: "boss", permissions: { edit: false, copy: false } } });
+  const { id: restricted } = api.open(locked);
+  assert.equal(api.info(restricted).permissions.edit, false);
+  assert.throws(() => api.unlock(restricted, "wrong"), /owner password/);
+  api.unlock(restricted, "boss");
+  assert.equal(api.info(restricted).permissions.edit, true);
+  const open = api.save(restricted, { encrypt: { method: "none" } });
+  assert.equal(api.info(api.open(open).id).encrypted, false);
+});

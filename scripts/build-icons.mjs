@@ -78,7 +78,7 @@ export const THIN = [
   "comment", "reply", "signature", "radio_button_checked", "layers", "post_add", "call_split", "crop", "add_photo_alternate", "edit",
   "lock", "lock_open", "password", "cleaning_services", "document_scanner", "compress", "compare", "ink_eraser", "zoom_out",
   "bookmarks", "page_info", "move_down", "move_up", "branding_watermark", "file_export", "output", "picture_as_pdf", "image",
-  "format_shapes", "line_weight", "opacity", "hide_source", "history", "format_color_fill", "format_underlined", "format_strikethrough",
+  "format_shapes", "line_weight", "opacity", "hide_source", "history", "format_color_fill", "format_underlined", "format_strikethrough", "select",
 ];
 const thin = join(root, "node_modules/@material-symbols/svg-300/outlined");
 
