@@ -633,7 +633,7 @@ function renderToolbar() {
     },
     References: () => [
       ...common(),
-      group(big("toc", "Table of\nContents", "Table of contents (at the start of the PDF and the Word file)", () => [
+      group(big("contents", "Table of\nContents", "Table of contents (at the start of the PDF and the Word file)", () => [
         { label: "Insert table of contents", checked: settings.toc === true, run: () => setSettings({ toc: true }) },
         { label: "Remove table of contents", disabled: settings.toc !== true, run: () => setSettings({ toc: null }) },
       ], null, { menu: true }),
@@ -1459,17 +1459,102 @@ function insertPageBreak() {
   editor.insertMarkdown("{{< pagebreak >}}");
 }
 
-const SYMBOLS = [
-  ..."αβγδεζηθικλμνξπρστυφχψωΓΔΘΛΞΠΣΦΨΩ".split("").map((c) => [c, "Greek"]),
-  ..."±×÷≈≠≡≤≥∞∑∏∫∂∇√∝∈∉⊂⊆∪∩∀∃¬∧∨⇒⇔→←↔↑↓°′″‰µ".split("").map((c) => [c, "Math"]),
-  ..."–—…•·§¶†‡©®™€£¥¢«»„“”‚‘’ ".split("").map((c) => [c, "Text"]),
+// The symbol table, as Word's and ONLYOFFICE's: characters in a grid by category, each named.
+const SYMBOL_SETS = [
+  ["Greek", "α alpha|β beta|γ gamma|δ delta|ε epsilon|ϵ lunate epsilon|ζ zeta|η eta|θ theta|ϑ theta symbol|ι iota|κ kappa|λ lambda|μ mu|ν nu|ξ xi|ο omicron|π pi|ϖ pi symbol|ρ rho|ϱ rho symbol|σ sigma|ς final sigma|τ tau|υ upsilon|φ phi|ϕ phi symbol|χ chi|ψ psi|ω omega|Α Alpha|Β Beta|Γ Gamma|Δ Delta|Ε Epsilon|Ζ Zeta|Η Eta|Θ Theta|Ι Iota|Κ Kappa|Λ Lambda|Μ Mu|Ν Nu|Ξ Xi|Ο Omicron|Π Pi|Ρ Rho|Σ Sigma|Τ Tau|Υ Upsilon|Φ Phi|Χ Chi|Ψ Psi|Ω Omega"],
+  ["Math operators", "± plus-minus|∓ minus-plus|× multiplication|÷ division|· dot operator|∙ bullet operator|− minus|∗ asterisk operator|∘ ring operator|√ square root|∛ cube root|∜ fourth root|∝ proportional to|∞ infinity|∂ partial differential|∇ nabla|∆ increment|∑ n-ary summation|∏ n-ary product|∐ n-ary coproduct|∫ integral|∬ double integral|∭ triple integral|∮ contour integral|′ prime|″ double prime|‴ triple prime|° degree|‰ per mille|‱ per ten thousand"],
+  ["Relations", "= equals|≠ not equal|≈ almost equal|≃ asymptotically equal|≅ approximately equal|≡ identical to|≢ not identical|∼ tilde operator|≪ much less than|≫ much greater than|< less than|> greater than|≤ less or equal|≥ greater or equal|≦ less over equal|≧ greater over equal|≺ precedes|≻ succeeds|∝ proportional to|≐ approaches the limit"],
+  ["Logic and sets", "¬ not|∧ logical and|∨ logical or|⊕ xor|⊗ circled times|∀ for all|∃ there exists|∄ there does not exist|∅ empty set|∈ element of|∉ not an element of|∋ contains as member|⊂ subset of|⊃ superset of|⊆ subset or equal|⊇ superset or equal|⊄ not a subset|∪ union|∩ intersection|∖ set minus|⊤ top|⊥ up tack|⊢ right tack|⊨ true|∴ therefore|∵ because|ℕ natural numbers|ℤ integers|ℚ rationals|ℝ reals|ℂ complex numbers|ℵ alef"],
+  ["Arrows", "→ rightwards|← leftwards|↑ upwards|↓ downwards|↔ left right|↕ up down|⇒ rightwards double|⇐ leftwards double|⇔ left right double|⇑ upwards double|⇓ downwards double|↦ maps to|↗ north east|↘ south east|↙ south west|↖ north west|⟶ long rightwards|⟵ long leftwards|⟷ long left right|⟹ long rightwards double|↺ anticlockwise|↻ clockwise|⇄ right over left|⇌ equilibrium"],
+  ["Super- and subscripts", "⁰ superscript zero|¹ superscript one|² superscript two|³ superscript three|⁴ superscript four|⁵ superscript five|⁶ superscript six|⁷ superscript seven|⁸ superscript eight|⁹ superscript nine|⁺ superscript plus|⁻ superscript minus|⁼ superscript equals|⁽ superscript left paren|⁾ superscript right paren|ⁿ superscript n|ⁱ superscript i|₀ subscript zero|₁ subscript one|₂ subscript two|₃ subscript three|₄ subscript four|₅ subscript five|₆ subscript six|₇ subscript seven|₈ subscript eight|₉ subscript nine|₊ subscript plus|₋ subscript minus|₌ subscript equals"],
+  ["Fractions", "½ one half|⅓ one third|⅔ two thirds|¼ one quarter|¾ three quarters|⅕ one fifth|⅖ two fifths|⅗ three fifths|⅘ four fifths|⅙ one sixth|⅚ five sixths|⅛ one eighth|⅜ three eighths|⅝ five eighths|⅞ seven eighths|⅐ one seventh|⅑ one ninth|⅒ one tenth"],
+  ["Punctuation", "– en dash|— em dash|‒ figure dash|… ellipsis|• bullet|· middle dot|‣ triangular bullet|§ section|¶ pilcrow|† dagger|‡ double dagger|‖ double vertical line|¦ broken bar|« left guillemet|» right guillemet|‹ single left guillemet|› single right guillemet|„ low double quote|“ left double quote|” right double quote|‚ low single quote|‘ left single quote|’ right single quote|¡ inverted exclamation|¿ inverted question|⁂ asterism|※ reference mark"],
+  ["Spaces", "\u00a0 no-break space|\u2009 thin space|\u200a hair space|\u2003 em space|\u2002 en space|\u200b zero-width space|\u2011 non-breaking hyphen|\u00ad soft hyphen"],
+  ["Currency", "€ euro|£ pound|¥ yen|¢ cent|$ dollar|₽ ruble|₴ hryvnia|₹ rupee|₩ won|₺ lira|₿ bitcoin|¤ currency|₣ franc|₪ shekel|₫ dong"],
+  ["Letters", "Ä A diaeresis|Ö O diaeresis|Ü U diaeresis|ä a diaeresis|ö o diaeresis|ü u diaeresis|ß sharp s|ẞ capital sharp s|À A grave|Á A acute|Â A circumflex|Ã A tilde|Å A ring|Æ AE|Ç C cedilla|È E grave|É E acute|Ê E circumflex|Ë E diaeresis|Í I acute|Ñ N tilde|Ó O acute|Ø O stroke|Œ OE|Š S caron|Ú U acute|Ý y acute|Ž z caron|à a grave|á a acute|â a circumflex|ã a tilde|å a ring|æ ae|ç c cedilla|è e grave|é e acute|ê e circumflex|ë e diaeresis|í i acute|ï i diaeresis|ñ n tilde|ó o acute|ø o stroke|œ oe|š s caron|ú u acute|ý y acute|ž z caron|ð eth|þ thorn|ħ h stroke|ℓ script l|ℏ h bar"],
+  ["Units and signs", "© copyright|® registered|™ trade mark|℗ sound recording|№ numero|℃ degree Celsius|℉ degree Fahrenheit|Ω ohm|℧ mho|Å angstrom|µ micro|‰ per mille|⌀ diameter|⊥ perpendicular|∠ angle|∡ measured angle|⌒ arc"],
+  ["Shapes and marks", "✓ check mark|✔ heavy check|✗ ballot x|✘ heavy ballot x|★ black star|☆ white star|● black circle|○ white circle|◆ black diamond|◇ white diamond|■ black square|□ white square|▲ black up triangle|△ white up triangle|▼ black down triangle|▽ white down triangle|► black right pointer|◄ black left pointer|♠ spade|♣ club|♥ heart|♦ diamond suit|☐ ballot box|☑ ballot box with check|☒ ballot box with x|⚠ warning|☎ telephone|✉ envelope|✎ pencil|☛ pointing hand"],
 ];
+const SYMBOLS = SYMBOL_SETS.flatMap(([category, list]) => list.split("|").map((entry) => ({ char: [...entry][0], name: entry.slice([...entry][0].length).trim(), category })));
+const RECENT_SYMBOLS_KEY = "writer.recentSymbols";
+const codePoint = (c) => `U+${c.codePointAt(0).toString(16).toUpperCase().padStart(4, "0")}`;
+
+/** Insert → Symbol: a grid of characters, a category list and a search, recently used ones first. */
 async function insertSymbol() {
-  const names = { "–": "en dash", "—": "em dash", "…": "ellipsis", " ": "non-breaking space", "·": "middle dot", "„": "low quote", "«": "guillemet", "µ": "micro" };
-  const item = await pick({ title: "Insert a symbol", items: SYMBOLS, describe: ([c, kind]) => [c === " " ? "⍽" : c, `${kind}${names[c] ? ` · ${names[c]}` : ""}`], empty: "No match" });
-  if (!item) return;
-  editor.view.dispatch(editor.view.state.tr.insertText(item[0]).scrollIntoView());
+  if (!editable()) return;
+  // Opens at once; the recently used symbols fill in when storage answers.
+  let recentChars = [];
+  let category = "All";
+  let current = SYMBOLS[0];
+  const search = h("input.input.sym-search", { type: "search", placeholder: "Search by name, e.g. arrow, degree, alpha" });
+  const select = h("select.input.sym-category", { "aria-label": "Category" }, ...["All", ...SYMBOL_SETS.map(([c]) => c)].map((c) => h("option", { value: c }, c)));
+  const grid = h("div.sym-grid", { role: "grid", tabindex: "0" });
+  const recentRow = h("div.sym-recent");
+  const preview = h("div.sym-preview-char");
+  const info = h("div.sym-preview-info");
+  const insertButton = h("button.btn.primary", { type: "button" }, "Insert");
+  let shown = [];
+  const glyph = (c) => (/[\u00a0\u2000-\u200b\u2011\u00ad]/.test(c) ? "⍽" : c);
+  const cell = (sym) => h("button.sym-cell", { type: "button", role: "gridcell", title: `${sym.name} (${codePoint(sym.char)})`, "aria-selected": String(sym === current),
+    onclick: () => choose(sym), ondblclick: () => finish(sym) }, glyph(sym.char));
+  function choose(sym) {
+    current = sym;
+    for (const b of document.querySelectorAll(".sym-cell[aria-selected=true]")) b.setAttribute("aria-selected", "false");
+    for (const b of document.querySelectorAll(".sym-cell")) if (b.title === `${sym.name} (${codePoint(sym.char)})`) b.setAttribute("aria-selected", "true");
+    preview.textContent = glyph(sym.char);
+    info.replaceChildren(h("strong", {}, sym.name), h("span", {}, `${sym.category} · ${codePoint(sym.char)}`));
+    insertButton.disabled = false;
+  }
+  function draw() {
+    const q = search.value.trim().toLowerCase();
+    shown = SYMBOLS.filter((s) => (category === "All" || s.category === category) && (!q || s.name.toLowerCase().includes(q) || s.char === q || codePoint(s.char).toLowerCase() === q || s.category.toLowerCase().includes(q)));
+    grid.replaceChildren(...(shown.length ? shown.map(cell) : [h("p.sym-empty", {}, "No symbol matches")]));
+    if (shown.length && !shown.includes(current)) choose(shown[0]); else if (current) choose(current);
+  }
+  const drawRecent = () => {
+    const recent = recentChars.map((c) => SYMBOLS.find((s) => s.char === c)).filter(Boolean);
+    recentRow.replaceChildren(...(recent.length ? [h("span.sym-label", {}, "Recently used"), ...recent.map(cell)] : []));
+  };
+  void Promise.race([browser.storage.local.get({ [RECENT_SYMBOLS_KEY]: [] }), new Promise((r) => setTimeout(() => r({}), 1500))])
+    .then((stored) => { recentChars = stored?.[RECENT_SYMBOLS_KEY] ?? []; if (document.body.contains(recentRow)) drawRecent(); }).catch(() => {});
+  search.addEventListener("input", draw);
+  select.addEventListener("change", () => { category = select.value; draw(); });
+  // Arrow keys move through the grid (by its column count), Enter inserts.
+  const move = (delta) => {
+    const i = Math.max(0, shown.indexOf(current));
+    const next = shown[Math.min(shown.length - 1, Math.max(0, i + delta))];
+    if (next) { choose(next); grid.querySelector(".sym-cell[aria-selected=true]")?.scrollIntoView({ block: "nearest" }); }
+  };
+  const columns = () => Math.max(1, Math.round(grid.clientWidth / 40));
+  let done = null;
+  const result = new Promise((resolve) => { done = resolve; });
+  const backdrop = h("div.dialog-backdrop", { onclick: (e) => { if (e.target === backdrop) finish(null); } },
+    h("div.dialog.sym-dialog", { role: "dialog", "aria-label": "Symbol" },
+      h("h2", {}, "Symbol"),
+      h("div.sym-bar", {}, select, search),
+      recentRow,
+      grid,
+      h("div.sym-foot", {}, h("div.sym-preview", {}, preview, info), h("span.spacer"),
+        h("button.btn.ghost", { type: "button", onclick: () => finish(null) }, "Cancel"), insertButton)));
+  insertButton.addEventListener("click", () => finish(current));
+  backdrop.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); finish(null); }
+    else if (e.key === "Enter" && current) { e.preventDefault(); finish(current); }
+    else if (e.target !== search || ["ArrowDown", "ArrowUp"].includes(e.key)) {
+      const delta = { ArrowRight: 1, ArrowLeft: -1, ArrowDown: columns(), ArrowUp: -columns() }[e.key];
+      if (delta) { e.preventDefault(); move(delta); }
+    }
+  });
+  function finish(sym) { backdrop.remove(); done(sym); }
+  document.body.append(backdrop);
+  draw();
+  search.focus();
+  const sym = await result;
+  if (!sym || !editable()) { editor.focus(); return; }
+  editor.view.dispatch(editor.view.state.tr.insertText(sym.char).scrollIntoView());
   editor.focus();
+  const next = [sym.char, ...recentChars.filter((c) => c !== sym.char)].slice(0, 18);
+  void browser.storage.local.set({ [RECENT_SYMBOLS_KEY]: next }).catch(() => {});
 }
 
 function insertFigure(event) {

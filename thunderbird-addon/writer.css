@@ -445,3 +445,31 @@ body.wp .menu .wp-colors .wp-auto { width: 100%; height: 26px; }
 .wr-doc .wr-titleblock .toc-dots { flex: 1; min-width: 1em; border-bottom: 1px dotted currentColor; opacity: 0.6; transform: translateY(-0.25em); }
 .wr-doc .wr-titleblock .toc-page { flex: none; min-width: 1.2em; text-align: end; }
 .wr-doc .wr-titleblock .toc-empty { color: #777; font-style: italic; margin: 0; }
+
+/* Insert → Symbol: a character table, as in Word and ONLYOFFICE. */
+.sym-dialog { width: min(620px, calc(100vw - 32px)); display: grid; gap: 12px; }
+.sym-dialog h2 { margin: 0; }
+.sym-bar { display: grid; grid-template-columns: 190px minmax(0, 1fr); gap: 8px; }
+.sym-recent { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; }
+.sym-recent:empty { display: none; }
+.sym-label { width: 100%; font: 650 11.5px var(--mw-font); letter-spacing: 0.06em; text-transform: uppercase; color: var(--mw-text-3); margin-bottom: 4px; }
+.sym-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(40px, 1fr)); gap: 0;
+  height: 300px; overflow-y: auto; align-content: start; outline: none;
+  border: 1px solid var(--mw-border); border-radius: var(--mw-radius);
+}
+.sym-cell {
+  height: 40px; min-width: 0; padding: 0; border: 0; border-right: 1px solid var(--mw-border); border-bottom: 1px solid var(--mw-border);
+  background: var(--mw-surface); color: var(--mw-text); font: 20px/1 "Liberation Serif", "Times New Roman", serif; cursor: pointer;
+}
+.sym-recent .sym-cell { width: 40px; border: 1px solid var(--mw-border); border-radius: var(--mw-radius-s); }
+.sym-cell:hover { background: var(--mw-hover); }
+.sym-cell[aria-selected="true"] { background: var(--mw-primary); color: var(--mw-on-primary); }
+.sym-empty { grid-column: 1 / -1; padding: 24px; text-align: center; color: var(--mw-text-2); }
+.sym-foot { display: flex; align-items: center; gap: 8px; }
+.sym-foot .spacer { flex: 1; }
+.sym-preview { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.sym-preview-char { width: 52px; height: 52px; display: grid; place-items: center; border: 1px solid var(--mw-border); border-radius: var(--mw-radius); font: 32px/1 "Liberation Serif", "Times New Roman", serif; background: var(--mw-surface); }
+.sym-preview-info { display: grid; gap: 2px; min-width: 0; }
+.sym-preview-info strong { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sym-preview-info span { font-size: 12px; color: var(--mw-text-2); }
