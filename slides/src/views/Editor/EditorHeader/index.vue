@@ -35,6 +35,11 @@
           <PopoverMenuItem class="popover-menu-item" @click="resetSlides(); mainMenuVisible = false"><i-icon-park-outline:refresh class="icon" /> Reset slides</PopoverMenuItem>
           <PopoverMenuItem class="popover-menu-item" @click="openMarkupPanel(); mainMenuVisible = false"><i-icon-park-outline:mark class="icon" /> Mark slide types</PopoverMenuItem>
           <PopoverMenuItem class="popover-menu-item" @click="mainMenuVisible = false; hotkeyDrawerVisible = true"><i-icon-park-outline:command class="icon" /> Keyboard shortcuts</PopoverMenuItem>
+          <Divider :margin="10" />
+          <!-- The licence notice AGPL-3.0 asks an interactive program to show. -->
+          <a class="about-link" href="https://github.com/pipipi-pikachu/PPTist" target="_blank" @click="mainMenuVisible = false">
+            <PopoverMenuItem class="popover-menu-item"><i-icon-park-outline:info class="icon" /> About: based on PPTist, © 2020-present pipipi-pikachu (AGPL-3.0)</PopoverMenuItem>
+          </a>
         </template>
         <div class="menu-item"><i-icon-park-outline:hamburger-button class="icon" /></div>
       </Popover>
@@ -75,9 +80,6 @@
       <div class="menu-item" v-tooltip="'Export'" @click="setDialogForExport('pptx')">
         <i-icon-park-outline:download class="icon" />
       </div>
-      <a class="github-link" v-tooltip="'Based on PPTist, © 2020-present pipipi-pikachu (AGPL-3.0)'" href="https://github.com/pipipi-pikachu/PPTist" target="_blank">
-        <div class="menu-item"><i-icon-park-outline:github class="icon" /></div>
-      </a>
     </div>
 
     <Drawer
@@ -372,8 +374,9 @@ const openMarkupPanel = () => {
     }
   }
 }
-.github-link {
-  display: inline-block;
-  height: 30px;
+.about-link {
+  display: block;
+  color: inherit;
+  text-decoration: none;
 }
 </style>
