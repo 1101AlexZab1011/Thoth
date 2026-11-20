@@ -43,7 +43,7 @@
 .mw-f-completed .mw-t-ico { color: var(--mw-success); }
 
 /* --- the page ------------------------------------------------------------------------------- */
-#mw-tasks { flex: 1; min-height: 0; min-width: 0; display: flex; flex-direction: column; padding: 12px 12px 12px 2px; container: mw-tasks / inline-size; font: 13.5px var(--mw-font); color: var(--mw-text); }
+#mw-tasks { flex: 1; min-height: 0; min-width: 0; display: flex; flex-direction: column; padding: 14px 16px 12px 16px; container: mw-tasks / inline-size; font: 13.5px var(--mw-font); color: var(--mw-text); }
 .mw-t-head { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; padding: 0 2px 12px; }
 .mw-t-head h1 { margin: 0; font: 650 20px var(--mw-font); color: var(--mw-text); }
 .mw-t-spacer { flex: 1; }

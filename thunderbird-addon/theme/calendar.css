@@ -369,3 +369,11 @@
 #calendarTabPanel[mw-calendar] :is(calendar-event-box, calendar-editable-item) { min-width: 0; overflow: hidden; }
 #calendarTabPanel[mw-calendar] .allday-events-scroll { min-inline-size: 0 !important; }
 #calendarTabPanel[mw-calendar] calendar-event-column { min-width: 0 !important; }
+
+/* Room from the splitter line and the window edges: nothing sits flush against a border. */
+#calendarTabPanel[mw-calendar] #calendarViewHeader { padding-inline-start: 16px !important; }
+#calendarTabPanel[mw-calendar] #view-box { margin-inline-start: 16px !important; }
+#mw-agenda { margin-inline-start: 16px !important; }
+/* In tasks mode the New event row (which carried the column's top padding) is hidden. */
+#calendarTabPanel[mw-tasks] #calSidebar { padding-top: 14px !important; }
+#calendarTabPanel[mw-calendar] #calSidebar { padding-inline: 14px 12px !important; }

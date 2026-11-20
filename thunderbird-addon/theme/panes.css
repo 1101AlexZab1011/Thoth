@@ -347,3 +347,13 @@
 :root:has(#categories) #paneDeck table { width: 100% !important; max-width: 100% !important; table-layout: fixed !important; }
 :root:has(#categories) #paneDeck :is(td, th) { overflow-wrap: anywhere; white-space: normal !important; }
 :root:has(#categories) #paneDeck :is(td, th) :is(menulist, input, select) { max-width: 100%; }
+
+/* Room from the panes' borders: cards and folder rows never touch an edge or a splitter. */
+#threadTree tr[is="thread-card"] > td { padding-inline: 10px !important; }
+#threadTree tr[is="thread-card"] .card-container { margin-inline: 0 !important; }
+:root[mw-mail] #quick-filter-bar { padding-inline: 12px !important; }
+:root[mw-mail] #threadPaneHeader { padding-inline: 14px !important; }
+#folderTree { padding-inline: 8px !important; }
+/* Contacts: the books list and the toolbar keep the same room from the edges. */
+:root:has(#booksPane) #books { padding-inline: 8px !important; }
+:root:has(#booksPane) #booksPaneHeader { padding-inline: 10px !important; }
