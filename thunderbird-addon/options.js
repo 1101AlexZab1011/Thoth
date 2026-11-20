@@ -41,6 +41,16 @@ async function renderAppearance() {
 }
 void renderAppearance();
 
+// ---- chat: 24-hour (the default) or 12-hour times
+async function renderClock() {
+  const { chatClock } = await browser.storage.local.get({ chatClock: "24" });
+  document.querySelector("#clock").replaceChildren(...[["24", "24-hour (14:05)"], ["12", "12-hour (2:05 PM)"]].map(([value, label]) => h("button", {
+    type: "button", role: "radio", "aria-checked": String(chatClock === value),
+    onclick: async () => { await browser.storage.local.set({ chatClock: value }); await renderClock(); },
+  }, label)));
+}
+void renderClock();
+
 // ---- code theme, with a live preview
 const SAMPLE = `// Fetch unread mail and group it by sender.
 import { client } from "./mail";

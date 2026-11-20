@@ -148,3 +148,9 @@ textarea#text { display: block; width: 100%; min-height: 24px; max-height: 220px
 .skill-suggestion span { font-family: var(--mw-font-mono); font-size: 13px; }
 .skill-suggestion small { color: var(--mw-text-2); }
 .skill-suggestion[aria-selected="true"], .skill-suggestion:hover { background: var(--mw-primary-soft); }
+
+/* Message times: small in the bubble's bottom corner; a pill between days. */
+.msg-time { display: block; margin: 2px -4px -4px 16px; text-align: end; font: 11px var(--mw-font); color: var(--mw-text-3); font-variant-numeric: tabular-nums; user-select: none; cursor: default; }
+article.user .msg-time { color: color-mix(in srgb, var(--mw-on-primary) 72%, transparent); }
+.day-separator { justify-self: center; margin: 10px 0 2px; }
+.day-separator span { display: inline-block; padding: 3px 10px; border-radius: var(--mw-radius-pill); background: var(--mw-surface-2); color: var(--mw-text-2); font: 560 11.5px var(--mw-font); }

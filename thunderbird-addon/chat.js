@@ -292,6 +292,44 @@ function renderMessageAttachments(article, files) {
 // A poll already in flight when the user sends returns the new message too, so the same
 // event can arrive from both paths; each broker sequence is drawn once.
 const shown = new Set();
+// Times as Telegram and WhatsApp show them: in each bubble (14:05), a separator between days
+// (Today, Yesterday, 18 November), the full date and time on hover. 24-hour unless the user
+// chose 12-hour in Settings (chatClock).
+let clock = "24";
+let lastDay = "";
+const timeFormat = () => new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit", hourCycle: clock === "12" ? "h12" : "h23" });
+const fullFormat = () => new Intl.DateTimeFormat(undefined, { weekday: "long", day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: clock === "12" ? "h12" : "h23" });
+function dayLabel(date) {
+  const day = new Date(date); day.setHours(0, 0, 0, 0);
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const days = Math.round((today - day) / 86400000);
+  if (days === 0) return "Today";
+  if (days === 1) return "Yesterday";
+  return new Intl.DateTimeFormat(undefined, { day: "numeric", month: "long", ...(day.getFullYear() === today.getFullYear() ? {} : { year: "numeric" }) }).format(day);
+}
+function stamp(article, at) {
+  const date = new Date(at);
+  if (Number.isNaN(date.getTime())) return;
+  const time = h("time", { class: "msg-time", datetime: date.toISOString(), title: fullFormat().format(date) }, timeFormat().format(date));
+  article.append(time);
+  const key = date.toDateString();
+  if (key !== lastDay) {
+    lastDay = key;
+    messages.append(h("div", { class: "day-separator", role: "separator", "data-day": key }, h("span", {}, dayLabel(date))));
+  }
+}
+function restamp() {
+  for (const time of messages.querySelectorAll("time.msg-time")) {
+    const date = new Date(time.getAttribute("datetime"));
+    time.textContent = timeFormat().format(date);
+    time.title = fullFormat().format(date);
+  }
+  for (const separator of messages.querySelectorAll(".day-separator")) separator.firstChild.textContent = dayLabel(new Date(separator.dataset.day));
+}
+browser.storage.local.get({ chatClock: "24" }).then(({ chatClock }) => { clock = chatClock === "12" ? "12" : "24"; restamp(); }).catch(() => {});
+browser.storage.onChanged.addListener((changes) => { if (changes.chatClock) { clock = changes.chatClock.newValue === "12" ? "12" : "24"; restamp(); } });
+// "Today" becomes "Yesterday" overnight.
+setInterval(restamp, 10 * 60 * 1000);
 const show = (item, keepPinned = true) => {
   if (item.sequence != null) { if (shown.has(item.sequence)) return; shown.add(item.sequence); }
   const article = document.createElement("article");
@@ -299,6 +337,7 @@ const show = (item, keepPinned = true) => {
   const { body, files } = splitAttachments(item.text);
   renderMarkdown(article, body || (files.length ? "" : item.text));
   renderMessageAttachments(article, files);
+  if (item.at) stamp(article, item.at);
   messages.append(article);
   messages.append(typing);
   follow.observe(article);
@@ -355,7 +394,7 @@ async function api(path, init = {}) {
   if (!response.ok) throw new Error(result.error?.message ?? "Listener unavailable");
   return result;
 }
-const toItem = (event) => ({ type: event.from.agent ? "agent" : "user", text: typeof event.data?.text === "string" ? event.data.text : JSON.stringify(event.data), sequence: event.seq });
+const toItem = (event) => ({ type: event.from.agent ? "agent" : "user", text: typeof event.data?.text === "string" ? event.data.text : JSON.stringify(event.data), sequence: event.seq, at: event.created_at ?? event.at ?? event.ts });
 // A deleted session's farewell to its agent is protocol, not conversation.
 const visible = (event) => event.type !== "session.closed";
 const latestEvent = async (pattern) => (await api(`/v1/events?channel=${encodeURIComponent(pattern)}&before=${Number.MAX_SAFE_INTEGER}&limit=1`)).events.at(-1) ?? null;
@@ -413,6 +452,7 @@ async function switchTo(id) {
   unreadBy.delete(id);
   unread = 0;
   shown.clear();
+  lastDay = "";
   messages.replaceChildren(typing);
   renderHeader();
   renderBadge();
