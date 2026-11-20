@@ -31,7 +31,7 @@ export const NAMES = [
   // paint
   "menu", "splitscreen_right", "splitscreen_bottom", "select", "lasso_select", "polyline", "select_all", "deselect", "content_cut", "aspect_ratio", "note_add", "keyboard", "arrow_selector_tool", "draw", "ink_highlighter", "ink_eraser", "horizontal_rule", "north_east", "rectangle", "circle",
   "title", "format_color_fill", "colorize", "crop", "undo", "redo", "pan_tool", "layers", "photo_library", "content_paste",
-  "flip_to_front", "flip_to_back", "opacity", "line_weight",
+  "flip_to_front", "flip_to_back", "opacity", "line_weight", "rotate_left", "rotate_right", "signature", "sticky_note_2",
   // agent / artifacts
   "smart_toy", "wand_stars", "lock", "lock_open", "verified_user", "gpp_maybe", "bug_report", "code_blocks", "deployed_code",
   "keyboard_double_arrow_left", "keyboard_double_arrow_right", "dock_to_left", "dock_to_right", "cloud_off", "wifi_off", "schedule",

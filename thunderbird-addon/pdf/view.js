@@ -192,7 +192,12 @@ export function createView({ scroll, mount, call, onPage = () => {}, onZoom = ()
       const c = clientOf(index, point);
       top = scroll.scrollTop + (c.y - box.top) - 60;
       left = scroll.scrollLeft + (c.x - box.left) - scroll.clientWidth / 2;
-    } else top = scroll.scrollTop + (p.el.getBoundingClientRect().top - box.top) - 14;
+    } else {
+      const r = p.el.getBoundingClientRect();
+      top = scroll.scrollTop + (r.top - box.top) - 14;
+      // Pages wider than others (turned, landscape) widen the strip: keep this one in the middle.
+      if (scroll.scrollWidth > scroll.clientWidth) left = scroll.scrollLeft + (r.left + r.width / 2 - box.left) - scroll.clientWidth / 2;
+    }
     scroll.scrollTo({ top, ...(left !== null ? { left: Math.max(0, left) } : {}), behavior: smooth ? "smooth" : "instant" });
     schedule();
   }

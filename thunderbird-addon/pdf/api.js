@@ -4,6 +4,7 @@
 import { createEngine } from "./engine.js";
 import { createAnnotations } from "./annotations.js";
 import { createForms } from "./forms.js";
+import { createPages } from "./pages.js";
 
 /** @param {typeof import("mupdf")} mupdf */
 export function createApi(mupdf) {
@@ -33,8 +34,9 @@ export function createApi(mupdf) {
       return doc;
     }
     if (id) {
-      // An open document: graft from a copy of its current state, unsaved changes included.
-      return new mupdf.PDFDocument(engine.save(id, { garbage: false, compress: false }));
+      // An open document: graft from a copy of its pages as they are now, unsaved changes included
+      // (a copy of the pages, since saving the document itself would end its undo history).
+      return new mupdf.PDFDocument(pages.extract(id, Array.from({ length: engine.docOf(id).countPages() }, (_, i) => i)));
     }
     const doc = mupdf.Document.openDocument(bytes, "application/pdf").asPDF();
     if (!doc) throw new Error("One of the files is not a PDF");
@@ -55,6 +57,8 @@ export function createApi(mupdf) {
     image.destroy();
     return page;
   }
+
+  const pages = createPages(engine, mupdf, { imagePage });
 
   function fromImages(list) {
     const doc = new mupdf.PDFDocument();
@@ -95,6 +99,16 @@ export function createApi(mupdf) {
     formFill: (id, values) => forms.fill(id, values),
     placeImage: (id, page, rect, bytes, options) => forms.placeImage(id, page, rect, bytes, options),
     flatten: (id, options) => forms.flatten(id, options),
+    // pages
+    pagesMove: (id, indexes, to) => pages.move(id, indexes, to),
+    pagesDelete: (id, indexes) => pages.remove(id, indexes),
+    pagesRotate: (id, indexes, degrees) => pages.rotate(id, indexes, degrees),
+    pagesInsertBlank: (id, at, options) => pages.insertBlank(id, at, options),
+    pagesInsert: (id, at, sources) => pages.insert(id, at, sources, openSource),
+    pagesDuplicate: (id, indexes) => pages.duplicate(id, indexes),
+    pagesExtract: (id, indexes) => pages.extract(id, indexes),
+    pagesSplit: (id, options) => pages.split(id, options),
+    pagesCrop: (id, indexes, margins) => pages.crop(id, indexes, margins),
     // new documents
     combine,
     fromImages,

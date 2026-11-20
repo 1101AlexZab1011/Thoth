@@ -352,7 +352,7 @@ async function changed(t = tab, { pages, rewrite = false } = {}) {
   if (rewrite) t.rewrite = true;
   const structural = before.pages.length !== t.info.pages.length || before.pages.some((p, i) => p.width !== t.info.pages[i].width || p.height !== t.info.pages[i].height || p.label !== t.info.pages[i].label);
   if (t === tab) {
-    if (structural) view.build(t); else view.invalidate(pages);
+    if (structural) { view.build(t); if (t.view.fit) view.fit(t.view.fit); } else view.invalidate(pages);
     if (panels.open === "thumbnails" || (structural && panels.open)) panels.refresh();
     if (panels.find.hits.length) void panels.runSearch(panels.find.query, true);
     renderRibbon();
@@ -873,7 +873,7 @@ const ctx = {
 globalThis.pdfSpace = ctx; // for debugging in the page
 
 // The parts of the space, each adding its ribbon tab, tools, panels and agent commands.
-const PARTS = ["./pdf/comment.js", "./pdf/fill.js"];
+const PARTS = ["./pdf/comment.js", "./pdf/fill.js", "./pdf/organize.js"];
 for (const part of PARTS) {
   try { (await import(part)).install(ctx); }
   catch (error) { console.error(`Thoth PDF: ${part}`, error); }
