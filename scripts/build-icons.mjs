@@ -72,6 +72,13 @@ export const THIN = [
   "check", "close", "rate_review", "spellcheck", "fit_page", "fit_width", "zoom_in", "check_box", "check_box_outline_blank",
   "language", "remove", "add", "short_text", "arrow_back", "note_add", "download", "file_copy", "info", "settings", "folder_open",
   "search", "notes", "subtitles", "format_quote", "code", "horizontal_rule", "event", "edit_note", "done_all", "palette",
+  // pdf
+  "arrow_selector_tool", "pan_tool", "rotate_left", "rotate_right", "view_agenda", "two_pager", "grid_view", "first_page", "last_page",
+  "keyboard_arrow_left", "keyboard_arrow_right", "sticky_note_2", "draw", "rectangle", "circle", "north_east", "text_fields", "approval",
+  "comment", "reply", "signature", "radio_button_checked", "layers", "post_add", "call_split", "crop", "add_photo_alternate", "edit",
+  "lock", "lock_open", "password", "cleaning_services", "document_scanner", "compress", "compare", "ink_eraser", "zoom_out",
+  "bookmarks", "page_info", "move_down", "move_up", "branding_watermark", "file_export", "output", "picture_as_pdf", "image",
+  "format_shapes", "line_weight", "opacity", "hide_source", "history",
 ];
 const thin = join(root, "node_modules/@material-symbols/svg-300/outlined");
 

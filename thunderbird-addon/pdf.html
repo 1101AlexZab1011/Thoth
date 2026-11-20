@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>PDF</title>
+<link rel="stylesheet" href="shared/ui.css">
+<link rel="stylesheet" href="shared/doctabs.css">
+<link rel="stylesheet" href="shared/home.css">
+<link rel="stylesheet" href="pdf.css">
+<body class="pd">
+  <div id="tabs" class="tabs-host"></div>
+  <!-- Laid out as ONLYOFFICE's PDF editor: ribbon tabs and the document's name, the ribbon, a bar of
+       panels on the left (pages, bookmarks, search, comments), the pages, the status bar. -->
+  <header class="pd-header" id="header" hidden>
+    <nav id="rb-tabs" class="rb-tabs" role="tablist" aria-label="Ribbon"></nav>
+    <span class="spacer"></span>
+    <span id="title" class="pd-title"></span>
+    <span id="state" class="chip" hidden></span>
+  </header>
+  <div id="toolbar" class="toolbar" hidden></div>
+  <div id="notice" class="notice" hidden></div>
+  <div class="body" id="body" hidden>
+    <nav id="leftbar" class="pd-sidebar" aria-label="Panels"></nav>
+    <aside id="leftpanel" class="pd-panel left" hidden></aside>
+    <main id="scroll" class="scroll" tabindex="0">
+      <div id="docs"></div>
+    </main>
+    <aside id="rightpanel" class="pd-panel right" hidden></aside>
+  </div>
+  <footer class="statusbar" id="statusbar" hidden>
+    <span class="sb-group" id="sb-pages"></span>
+    <span id="sb-message" class="sb-message"></span>
+    <span class="sb-group" id="sb-tool"></span>
+    <span class="sb-group sb-zoom" id="sb-zoom"></span>
+  </footer>
+  <div id="start" hidden></div>
+  <div id="backstage" class="backstage" hidden></div>
+  <div id="print" class="print-pages" aria-hidden="true"></div>
+  <script type="module" src="pdf.js"></script>
+</body>
+</html>

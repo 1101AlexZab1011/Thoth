@@ -33,6 +33,7 @@ const TOOL_GROUPS = [
     tools: [
       { id: "notes", selector: '[id$="spacesButton-notes"]', icon: "notes" },
       { id: "writer", selector: '[id$="spacesButton-writer"]', icon: "writer" },
+      { id: "pdf", selector: '[id$="spacesButton-pdf"]', icon: "picture_as_pdf" },
       { id: "paint", selector: '[id$="spacesButton-paint"]', icon: "brush" },
       { id: "slides", selector: '[id$="spacesButton-slides"]', icon: "slides" },
       { id: "draw", selector: '[id$="spacesButton-draw"]', icon: "shape_line" },

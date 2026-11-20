@@ -26,7 +26,7 @@ function svg(tag, attrs = {}, ...children) {
 }
 
 /** A file tile: the sheet with a folded corner, a glyph, the format's name. */
-function tile(label, colour, glyph) {
+export function tile(label, colour, glyph) {
   const glyphs = {
     W: () => svg("text", { x: "35", y: "50", "text-anchor": "middle", "font-family": "Arial, sans-serif", "font-weight": "700", "font-size": "30", fill: "#fff" }, document.createTextNode("W")),
     pdf: () => svg("path", { d: "M27 50c6-14 9-24 7-28-2-3-5 0-4 5 2 9 9 18 16 19 5 1 5-3 0-3-8-1-20 4-23 9-2 3 1 4 4-2z", fill: "none", stroke: "#fff", "stroke-width": "2", "stroke-linejoin": "round" }),
@@ -36,6 +36,9 @@ function tile(label, colour, glyph) {
     lines: () => svg("path", { d: "M20 28h30M20 34h30M20 40h30M20 46h30M20 52h22", stroke: "#fff", "stroke-width": "2" }),
     book: () => svg("path", { d: "M17 30c6-2 12-2 18 2v20c-6-4-12-4-18-2zM53 30c-6-2-12-2-18 2v20c6-4 12-4 18-2z", fill: "#fff" }),
     code: () => svg("path", { d: "M27 32l-9 8 9 8M43 32l9 8-9 8M38 28l-6 24", fill: "none", stroke: "#fff", "stroke-width": "3", "stroke-linecap": "round", "stroke-linejoin": "round" }),
+    image: () => svg("g", {}, svg("rect", { x: "15", y: "26", width: "40", height: "28", rx: "3", fill: "none", stroke: "#fff", "stroke-width": "2.5" }),
+      svg("path", { d: "M18 51l11-12 8 8 6-5 9 9z", fill: "#fff" }), svg("circle", { cx: "44", cy: "34", r: "3.5", fill: "#fff" })),
+    table: () => svg("path", { d: "M16 27h38v26H16zM16 36h38M16 45h38M29 27v26M42 27v26", fill: "none", stroke: "#fff", "stroke-width": "2.5", "stroke-linejoin": "round" }),
   };
   return svg("svg", { viewBox: "0 0 70 90", "aria-hidden": "true" },
     svg("path", { d: "M0 0h56l14 14v76H0z", fill: colour }),

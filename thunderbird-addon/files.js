@@ -205,7 +205,7 @@ const isPowerPoint = (path) => /\.pptx$/i.test(path);
 
 function openFile(path, { viewer = false } = {}) {
   const request = !viewer && (isDocument(path) || isDeck(path)) ? "open-document" : "open-file";
-  return background(request, { path }).then((reply) => { if (reply?.error) toast(reply.error); }, (error) => toast(error.message));
+  return background(request, { path, viewer }).then((reply) => { if (reply?.error) toast(reply.error); }, (error) => toast(error.message));
 }
 
 // ------------------------------------------------------------ file edits --
@@ -321,6 +321,7 @@ tree.addEventListener("contextmenu", (event) => {
         ...(isDeck(entry.path) ? [{ label: "Open in Slides", icon: "slides", run: () => openFile(entry.path) }] : []),
         ...(isPowerPoint(entry.path) ? [{ label: "Open in Slides (import)", icon: "slides", run: () => background("open-document", { path: entry.path }) }] : []),
         ...(/\.svg$/i.test(entry.path) ? [{ label: "Edit in Draw", icon: "shape_line", run: () => background("open-space", { name: "draw", query: entry.path }) }] : []),
+        ...(/\.pdf$/i.test(entry.path) ? [{ label: "Open in PDF", icon: "picture_as_pdf", run: () => openFile(entry.path) }] : []),
         ...(/\.(png|jpe?g|webp|bmp|gif)$/i.test(entry.path) ? [{ label: "Edit in Paint", icon: "brush", run: () => background("open-space", { name: "paint", query: entry.path }) }] : []),
         { label: "Open in viewer", icon: "preview", run: () => openFile(entry.path, { viewer: true }) }, { label: "Attach to chat", icon: "attach_file", run: () => attachToChat(paths) }]),
     "-",

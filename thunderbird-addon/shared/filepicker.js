@@ -1,6 +1,6 @@
 // Thoth's own file picker, a dialog inside the page, the same on Linux, Windows and macOS: no
 // system dialog, so no window-manager sizing, no separate window, and the workspace's look.
-//   pickFiles({ mode: "open" | "folder", title, path, filter: "all" | "images", multiple, read })
+//   pickFiles({ mode: "open" | "folder", title, path, filter: "all" | "images" | "pdf" | "documents", multiple, read })
 // resolves like browser.workspace.pickPath: a path (or paths with `multiple`), or with `read` the
 // files as { path, name, base64 }; null when cancelled. Folders are listed by the workspace host;
 // file contents are read by the add-on (browser.workspace.readFile).
@@ -9,6 +9,12 @@ import { icon } from "./icons.js";
 import { dirOf, nameOf, toSlash } from "./paths.js";
 
 const IMAGE = /\.(png|jpe?g|gif|webp|svg|bmp|avif|tiff?)$/i;
+// Named filters: which files show besides folders, and the word the footer uses for them.
+const FILTERS = {
+  images: [IMAGE, "Images"],
+  pdf: [/\.pdf$/i, "PDF"],
+  documents: [/\.(docx?|odt|rtf|txt|pptx?|odp|xlsx?|ods)$/i, "Documents"],
+};
 const RECENT_KEY = "filePicker.recent";
 let theme = null;
 let sheet = false;
@@ -95,7 +101,7 @@ export function pickFiles({ mode = "open", title = "", path = "", filter = "all"
     const back = el("button.icon-btn", { type: "button", title: "Back", "aria-label": "Back", onclick: () => { const prev = history.pop(); if (prev) void go(prev, false); } }, icon("arrow_back"));
     const up = el("button.icon-btn", { type: "button", title: "Up one folder (Backspace)", "aria-label": "Up", onclick: () => current && void go(dirOf(current)) }, icon("arrow_upward"));
     const hidden = el("button.icon-btn", { type: "button", title: "Show hidden files", "aria-label": "Show hidden files", "aria-pressed": "false", onclick: () => { showHidden = !showHidden; hidden.setAttribute("aria-pressed", String(showHidden)); void go(current, false); } }, icon("visibility"));
-    const filterNote = filter === "images" ? el("span.fp-filter", {}, "Images") : null;
+    const filterNote = FILTERS[filter] ? el("span.fp-filter", {}, FILTERS[filter][1]) : null;
 
     const dialog = el("div.fp-dialog", { role: "dialog", "aria-modal": "true", "aria-label": title || "Choose a file" },
       el("div.fp-head", {}, el("h2", {}, title || (folderMode ? "Choose a folder" : multiple ? "Choose files" : "Choose a file")),
@@ -106,7 +112,7 @@ export function pickFiles({ mode = "open", title = "", path = "", filter = "all"
         el("button.btn.ghost", { type: "button", onclick: () => finish(null) }, "Cancel"), okButton));
     const backdrop = el("div.fp-backdrop", { onmousedown: (event) => { if (event.target === backdrop) finish(null); } }, dialog);
 
-    const accepts = (entry) => entry.directory || (!folderMode && (filter !== "images" || IMAGE.test(entry.name)));
+    const accepts = (entry) => entry.directory || (!folderMode && (!FILTERS[filter] || FILTERS[filter][0].test(entry.name)));
     const chosenFiles = () => shown.filter((e) => selected.has(e.path) && !e.directory);
 
     function updateFooter() {

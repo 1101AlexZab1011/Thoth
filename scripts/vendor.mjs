@@ -23,6 +23,12 @@ await mkdir(to("pdfjs/wasm"), { recursive: true });
 for (const file of ["openjpeg.wasm", "jbig2.wasm", "qcms_bg.wasm", "openjpeg_nowasm_fallback.js", "jbig2_nowasm_fallback.js", "LICENSE_OPENJPEG", "LICENSE_JBIG2", "LICENSE_QCMS"]) {
   await cp(from(`pdfjs-dist/wasm/${file}`), to(`pdfjs/wasm/${file}`));
 }
+// MuPDF (WebAssembly) for the PDF space: rendering, text, annotations, forms, editing, redaction.
+await rm(to("mupdf"), { recursive: true, force: true });
+await mkdir(to("mupdf"), { recursive: true });
+for (const file of ["dist/mupdf.js", "dist/mupdf-wasm.js", "dist/mupdf-wasm.wasm", "LICENSE"]) {
+  await cp(from(`mupdf/${file}`), to(`mupdf/${file.split("/").pop()}`));
+}
 // xterm.js for the terminal panel.
 await rm(to("xterm"), { recursive: true, force: true });
 await mkdir(to("xterm"), { recursive: true });
@@ -72,4 +78,4 @@ if (await stat(join(slidesDist, "app.js")).catch(() => null)) {
   await cp(slidesDist, to("slides"), { recursive: true, filter: (path) => !/\/(index\.html|favicon\.ico|logo\.png)$/.test(path) });
   await cp(join(slidesDist, "..", "LICENSE"), to("slides/LICENSE"));
 } else console.warn(`No Slides build at ${slidesDist}; the Slides space keeps its previous copy`);
-console.log("vendored pdf.js, xterm.js, the writer bundle and slides");
+console.log("vendored pdf.js, MuPDF, xterm.js, the writer bundle and slides");

@@ -98,8 +98,8 @@ register("gui_key", "Press a key combination in Thunderbird, e.g. \"Control+Shif
   combo: z.string(),
 }, async ({ combo }) => text(await gui("key", { combo }, { timeoutMs: 360_000 })));
 
-register("gui_open", "Open a space: mail, addressbook, calendar, tasks, settings, viewer (file viewer), artifacts, paint, writer (document editor), browser (the web tab shown last).", {
-  space: z.enum(["mail", "addressbook", "calendar", "tasks", "settings", "viewer", "artifacts", "paint", "writer", "slides", "draw", "notes", "browser"]),
+register("gui_open", "Open a space: mail, addressbook, calendar, tasks, settings, viewer (file viewer), artifacts, paint, writer (document editor), pdf (the PDF editor), browser (the web tab shown last).", {
+  space: z.enum(["mail", "addressbook", "calendar", "tasks", "settings", "viewer", "artifacts", "paint", "writer", "slides", "draw", "pdf", "notes", "browser"]),
 }, async ({ space }) => text(await gui("open", { space })));
 
 register("gui_dock", "Show, minimize, maximize or resize a dock: chat (right side) or files (left side).", {

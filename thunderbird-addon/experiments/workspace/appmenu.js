@@ -93,6 +93,7 @@ function openAppMenu(window, view = "main") {
       separator(),
       item("Document", { icon: "description", run: done(() => openAddonSpace(window, "writer")) }),
       item("Drawing", { icon: "draw", run: done(() => openAddonSpace(window, "draw")) }),
+      item("PDF", { icon: "picture_as_pdf", run: done(() => openAddonSpace(window, "pdf")) }),
       item("Slides", { icon: "slideshow", run: done(() => openAddonSpace(window, "slides")) }),
       item("Note", { icon: "sticky_note_2", run: done(() => openAddonSpace(window, "notes")) }),
     ],
