@@ -303,6 +303,7 @@ function themeDocument(doc, url) {
   if (!doc?.defaultView || themedDocs.has(doc)) return;
   markAppearance(doc);
   onePaneBehaviour(doc);
+  try { mailPaneBehaviour(doc); } catch (error) { console.error("Mail Workspace: mail", error); }
   dropEchoTooltips(doc);
   try {
     doc.defaultView.windowUtils.loadSheetUsingURIString(url, doc.defaultView.windowUtils.AUTHOR_SHEET);

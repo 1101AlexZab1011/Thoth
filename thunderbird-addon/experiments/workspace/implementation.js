@@ -15,7 +15,7 @@ var workspace = class extends ExtensionAPI {
     const resProto = Services.io.getProtocolHandler("resource").QueryInterface(Ci.nsIResProtocolHandler);
     resProto.setSubstitutionWithFlags(RESOURCE_HOST, this.extension.rootURI, resProto.ALLOW_CONTENT_ACCESS);
     this.scope = { Services, ChromeUtils, Ci, Cc, Cu, ExtensionParent, IOUtils, PathUtils, console };
-    for (const file of ["address.js", "shortcuts.js", "websessions.js", "webhistory.js", "layout.js", "shell.js", "groups.js", "calendar.js", "tasks.js", "web.js", "webmenu.js", "aboutlogins.js", "automation.js"]) {
+    for (const file of ["address.js", "shortcuts.js", "websessions.js", "webhistory.js", "layout.js", "shell.js", "groups.js", "calendar.js", "tasks.js", "mail.js", "web.js", "webmenu.js", "aboutlogins.js", "automation.js"]) {
       // Through resource://, which is trusted also when the add-on runs from a folder.
       Services.scriptloader.loadSubScript(`resource://${RESOURCE_HOST}/experiments/workspace/${file}?${Date.now()}`, this.scope);
     }

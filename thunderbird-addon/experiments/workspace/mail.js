@@ -1,0 +1,82 @@
+/* Mail, redesigned in the workspace style (with theme/panes.css): above the message list, a search
+   field (Ctrl+K) and filter chips (All, Unread, Starred, Attachments) that are always there; the
+   message header as a card with the sender's initials and Reply / Reply all / Forward / Archive /
+   Delete with their labels. Thunderbird's own quick filter and header do the work.
+   Called for each about:3pane and about:message document as it loads (themeDocument). */
+/* global Services */
+
+const MAIL_HEADER_DONE = "extensions.mailworkspace.mail.header-layout";
+
+function mailPaneBehaviour(doc) {
+  const win = doc.defaultView;
+  if (!win || doc.mwMail) return;
+  doc.mwMail = true;
+  const ready = (fn) => (doc.readyState === "complete" ? fn() : win.addEventListener("load", fn, { once: true }));
+  if (/^about:3pane/.test(doc.documentURI)) ready(() => { try { mailListBar(doc); } catch (error) { console.error("Mail Workspace: mail list", error); } });
+  if (/^about:message/.test(doc.documentURI)) ready(() => { try { mailHeaderLayout(doc); } catch (error) { console.error("Mail Workspace: message header", error); } });
+}
+
+/** The quick filter bar, always shown, as a search field and chips; "All" clears the filters. */
+function mailListBar(doc) {
+  const win = doc.defaultView;
+  const bar = doc.getElementById("quick-filter-bar");
+  const qfb = win.quickFilterBar;
+  if (!bar || !qfb) return;
+  doc.documentElement.setAttribute("mw-mail", "true");
+  const show = () => { if (bar.hidden) { try { qfb._showFilterBar(true); } catch { bar.hidden = false; } } };
+  show();
+  // Thunderbird hides the bar again when its button is toggled or Escape clears it; keep it.
+  new win.MutationObserver(show).observe(bar, { attributes: true, attributeFilter: ["hidden"] });
+  const buttons = bar.querySelector(".quickFilterButtons");
+  if (buttons && !doc.getElementById("mw-qfb-all")) {
+    const all = doc.createElement("button");
+    all.id = "mw-qfb-all";
+    all.className = "button check-button";
+    all.type = "button";
+    all.textContent = "All";
+    all.addEventListener("click", () => {
+      for (const id of ["qfb-unread", "qfb-starred", "qfb-attachment", "qfb-inaddrbook", "qfb-tags"]) {
+        const button = doc.getElementById(id);
+        if (button?.getAttribute("aria-pressed") === "true") button.click();
+      }
+      syncAll();
+    });
+    buttons.prepend(all);
+    const syncAll = () => {
+      const any = ["qfb-unread", "qfb-starred", "qfb-attachment", "qfb-inaddrbook", "qfb-tags"].some((id) => doc.getElementById(id)?.getAttribute("aria-pressed") === "true");
+      // Only on a change: setting the attribute is itself a mutation this observer sees.
+      if (all.getAttribute("aria-pressed") !== String(!any)) all.setAttribute("aria-pressed", String(!any));
+    };
+    for (const id of ["qfb-unread", "qfb-starred", "qfb-attachment", "qfb-inaddrbook", "qfb-tags"]) {
+      const button = doc.getElementById(id);
+      if (button) new win.MutationObserver(syncAll).observe(button, { attributes: true, attributeFilter: ["aria-pressed"] });
+    }
+    syncAll();
+  }
+  // "Search in <folder>…" with Ctrl+K, as the other spaces search.
+  const search = doc.getElementById("qfb-qs-textbox");
+  const folderName = () => doc.getElementById("threadPaneFolderName")?.textContent?.trim();
+  const placeholder = () => { const name = folderName(); const text = `Search in ${name}…`; if (search && name && search.getAttribute("placeholder") !== text) search.setAttribute("placeholder", text); };
+  placeholder();
+  const title = doc.getElementById("threadPaneFolderName");
+  if (title) new win.MutationObserver(placeholder).observe(title, { childList: true, characterData: true, subtree: true });
+  doc.addEventListener("keydown", (event) => {
+    if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === "k") {
+      event.preventDefault();
+      search?.focus?.();
+    }
+  }, true);
+}
+
+/** The header as a card: initials, big subject, labelled buttons. Set once; the user may change it after. */
+function mailHeaderLayout(doc) {
+  const win = doc.defaultView;
+  doc.documentElement.setAttribute("mw-mail", "true");
+  if (Services.prefs.getIntPref(MAIL_HEADER_DONE, 0) >= 1) return;
+  const customize = win.gHeaderCustomize;
+  if (!customize?.customizeData) return;
+  Object.assign(customize.customizeData, { showAvatar: true, showBigAvatar: false, subjectLarge: true, hideLabels: true, buttonStyle: "default" });
+  try { customize.onPanelHidden?.(); } catch { /* older layout API */ }
+  try { customize.updateLayout?.(); } catch { /* applied on the next message */ }
+  Services.prefs.setIntPref(MAIL_HEADER_DONE, 1);
+}
