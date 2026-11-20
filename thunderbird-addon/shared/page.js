@@ -3,19 +3,20 @@
 import { icon } from "./icons.js";
 import "./theme.js";
 import { followKeyHints } from "./keys.js";
+import { pickFiles } from "./filepicker.js";
 
 followKeyHints();
 
-// Every page's file input opens Thunderbird's own chooser over the window as a dialog: a page's
-// native chooser has no parent window, and tiling window managers open it as a screen-sized window.
+// Every page's file input opens Thoth's own file picker (shared/filepicker.js), a dialog in the
+// page: the system's chooser is a separate window that window managers size and place as they like.
 // The chosen files reach the input as usual (its change event, input.files).
 const MIME = { png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif", webp: "image/webp", svg: "image/svg+xml", bmp: "image/bmp", pdf: "application/pdf", txt: "text/plain", md: "text/markdown", csv: "text/csv", json: "application/json" };
 const nativeClick = HTMLInputElement.prototype.click;
 HTMLInputElement.prototype.click = function click() {
-  if (this.type !== "file" || typeof browser === "undefined" || !browser.workspace?.pickPath) return nativeClick.call(this);
+  if (this.type !== "file" || typeof browser === "undefined" || !browser.workspace?.readFile) return nativeClick.call(this);
   const input = this;
   const images = /image/.test(input.accept ?? "");
-  void browser.workspace.pickPath({ mode: "open", filter: images ? "images" : "all", read: true, multiple: input.multiple })
+  void pickFiles({ mode: "open", filter: images ? "images" : "all", read: true, multiple: input.multiple, title: input.title || (images ? "Choose an image" : undefined) })
     .then((picked) => {
       const list = [].concat(picked ?? []);
       if (!list.length) return;

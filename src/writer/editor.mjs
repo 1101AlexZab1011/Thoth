@@ -1003,6 +1003,13 @@ export async function createWriter(root, hooks = {}, options = {}) {
     },
 
     /** Insert Markdown: at the cursor, at the end, or after the block at `pos`. */
+    /** Where blocks go: after `at`, but never above the document's header (front matter stays first). */
+    blockPosition(at) {
+      const first = view.state.doc.firstChild;
+      const headerEnd = first?.type.name === "quarto_block" && first.attrs.kind === "frontmatter" ? first.nodeSize : 0;
+      return Math.max(at, headerEnd);
+    },
+
     insertMarkdown(md, where = "cursor") {
       const units = build(md.endsWith("\n") ? md : `${md}\n`);
       const nodes = units.flatMap((u) => u.nodes);
@@ -1012,7 +1019,7 @@ export async function createWriter(root, hooks = {}, options = {}) {
       if (where === "end") at = state.doc.content.size;
       else if (typeof where === "number") { const node = state.doc.nodeAt(where); at = node ? where + node.nodeSize : state.doc.content.size; }
       else { const $from = state.selection.$from; at = $from.depth ? $from.after(1) : $from.pos; }
-      view.dispatch(state.tr.insert(at, nodes).scrollIntoView());
+      view.dispatch(state.tr.insert(api.blockPosition(at), nodes).scrollIntoView());
       return nodes.length;
     },
 
@@ -1050,7 +1057,7 @@ export async function createWriter(root, hooks = {}, options = {}) {
     insertBlocks(sources) {
       const nodes = sources.map(([kind, source, label = ""]) => kind === "markdown" ? build(`${source}\n`).flatMap((u) => u.nodes) : [schema.nodes.quarto_block.create({ kind, source, label })]).flat();
       const $from = view.state.selection.$from;
-      const at = $from.depth ? $from.after(1) : $from.pos;
+      const at = api.blockPosition($from.depth ? $from.after(1) : $from.pos);
       view.dispatch(view.state.tr.insert(at, nodes).scrollIntoView());
       view.focus();
     },

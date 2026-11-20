@@ -13,6 +13,7 @@ import { host, HOST_ENDPOINT } from "./shared/broker.js";
 import { icon } from "./shared/icons.js";
 import { dirOf, nameOf, tildePath } from "./shared/paths.js";
 import { $, h, iconButton, background, toast, registerPage, ask, contextMenu } from "./shared/page.js";
+import { pickFiles } from "./shared/filepicker.js";
 import { DocTabs } from "./shared/doctabs.js";
 import { History } from "./draw/history.js";
 import * as g from "./draw/geometry.js";
@@ -2054,7 +2055,7 @@ async function chooseFolder(input) {
   const value = input.value.trim();
   const cut = Math.max(value.lastIndexOf("/"), value.lastIndexOf("\\"));
   const name = value.slice(cut + 1) || "drawing.svg";
-  const folder = await browser.workspace.pickPath({ mode: "folder", title: "Folder for the new drawing", path: cut > 0 ? value.slice(0, cut) : "~" }).catch((error) => { toast(error.message); return null; });
+  const folder = await pickFiles({ mode: "folder", title: "Folder for the new drawing", path: cut > 0 ? value.slice(0, cut) : "~" }).catch((error) => { toast(error.message); return null; });
   if (!folder) return;
   input.value = `${folder.replace(/[\\/]$/, "")}/${name}`;
   input.focus();

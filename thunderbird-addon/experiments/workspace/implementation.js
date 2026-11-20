@@ -155,6 +155,14 @@ var workspace = class extends ExtensionAPI {
         async pickPath(options) { return pickPath(self.mainWindow(), options ?? {}); },
         async setUpdate(info) { return scope.setUpdateOffer(info ?? null, self.messengerWindows()); },
         async installUpdate(url) { return scope.installThothUpdate(url); },
+        async readFile(path) {
+          const file = String(path).replace(/^~(?=\/|$)/, Services.dirsvc.get("Home", Ci.nsIFile).path);
+          const info = await IOUtils.stat(file);
+          if (info.type !== "regular") throw new Error("Not a file");
+          if (info.size > 100 * 1024 * 1024) throw new Error(`${PathUtils.filename(file)} is larger than 100 MB`);
+          const bytes = await IOUtils.read(file);
+          return { base64: toBase64(bytes), size: info.size };
+        },
         async getSettings(names) { return scope.getSettings(names ?? null); },
         async setSetting(name, value) { return scope.setSetting(name, value); },
         async settingsAction(action) { return scope.settingsAction(self.mainWindow(), action); },
@@ -259,11 +267,14 @@ function pickPathNow(window, { mode = "folder", title = "", path = "", filter = 
         const info = await IOUtils.stat(file);
         if (info.size > 100 * 1024 * 1024) throw new Error(`${PathUtils.filename(file)} is larger than 100 MB`);
         const bytes = await IOUtils.read(file);
-        let binary = "";
-        for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-        return { path: file.replaceAll("\\", "/"), name: PathUtils.filename(file), base64: btoa(binary) };
+        return { path: file.replaceAll("\\", "/"), name: PathUtils.filename(file), base64: toBase64(bytes) };
       };
       const all = await Promise.all(chosen.map(readOne));
       return multiple ? all : all[0];
     });
+}
+
+/** Standard base64 of bytes (the Experiment's scope has no btoa). */
+function toBase64(bytes) {
+  return ChromeUtils.base64URLEncode(bytes, { pad: true }).replace(/-/g, "+").replace(/_/g, "/");
 }

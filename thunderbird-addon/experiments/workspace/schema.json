@@ -600,6 +600,18 @@
             "type": "string"
           }
         ]
+      },
+      {
+        "name": "readFile",
+        "type": "function",
+        "async": true,
+        "description": "A file's bytes (base64), up to 100 MB, for the add-on's own file picker.",
+        "parameters": [
+          {
+            "name": "path",
+            "type": "string"
+          }
+        ]
       }
     ],
     "events": [

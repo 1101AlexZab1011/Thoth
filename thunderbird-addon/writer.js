@@ -11,6 +11,7 @@ import { icon } from "./shared/icons.js";
 import { accel } from "./shared/keys.js";
 import { dirOf, nameOf, resolvePath, tildePath } from "./shared/paths.js";
 import { $, h, contextMenu, background, toast, registerPage, ask } from "./shared/page.js";
+import { pickFiles } from "./shared/filepicker.js";
 import { DocTabs } from "./shared/doctabs.js";
 import { createWriter, merge3, labels, layoutOf, paperSize, authorHue, layoutKey, pdfSettings } from "./vendor/writer/writer.mjs";
 import { createFind } from "./writer-find.js";
@@ -1579,15 +1580,14 @@ async function placeFigure(path, caption) {
 }
 
 /**
- * Image from file: Thunderbird's own chooser, over the window as a dialog (a page's file input opens
- * an unparented window the window manager may size to the screen). An image already in the document's
- * folder is referred to where it is; one from elsewhere is copied into figures/.
+ * Image from file: Thoth's file picker, starting in the document's figures folder. An image already
+ * in the document's folder is referred to where it is; one from elsewhere is copied into figures/.
  */
 async function chooseImageFile() {
   if (!doc.path || !editable()) return;
   const folder = dirOf(doc.path);
   let picked;
-  try { picked = await browser.workspace.pickPath({ mode: "open", title: "Insert image", path: `${folder}/figures`, filter: "images", read: true }); }
+  try { picked = await pickFiles({ mode: "open", title: "Insert image", path: `${folder}/figures`, filter: "images", read: true }); }
   catch (error) { toast(error.message); return; }
   if (!picked) return;
   if (picked.path.startsWith(`${folder}/`)) { await placeFigure(picked.path.slice(folder.length + 1)); return; }
