@@ -78,6 +78,11 @@ function installCalendar(window) {
     event.stopPropagation();
     openMenu(more, [["New event", () => newEvent.click()], ["New task", () => $("sidePanelNewTask")?.click()]]);
   });
+  // The column scrolls as one: its panes keep their content's height (xul.css makes [flex="1"]
+  // stretch with !important, which no author rule overrides, so the attribute goes while we run).
+  const unflexed = ["calendar-panel", "calendar-list-pane", "calendar-list-inner-pane"].map($).filter((node) => node?.getAttribute("flex") === "1");
+  for (const node of unflexed) node.removeAttribute("flex");
+  undo.push(() => { for (const node of unflexed) node.setAttribute("flex", "1"); });
   const listLabel = $("calendar-list-header-label");
   const oldListLabel = listLabel?.textContent;
   if (listLabel) { listLabel.removeAttribute("data-l10n-id"); listLabel.textContent = "My calendars"; }
@@ -87,8 +92,24 @@ function installCalendar(window) {
 
   const tags = add(el("div", { id: "mw-cal-tags" }));
   $("calendar-list-pane")?.after(tags);
+  const TAGS_SHOWN = 8;
+  const tagColor = (name) => Services.prefs.getStringPref(`calendar.category.color.${cal.view.formatStringForCSSRule(name)}`, "") || "#9aa3b2";
+  let tagsOpen = false;
+  let tagsUsed = new Map(); // tag -> number of events with it, a year back and forward
+  async function countTags() {
+    const now = Date.now();
+    const tz = cal.dtz.defaultTimezone;
+    const items = await cal.view.getCompositeCalendar(window).getItemsAsArray(Ci.calICalendar.ITEM_FILTER_TYPE_ALL, 0, cal.dtz.jsDateToDateTime(new Date(now - 365 * 86400000), tz), cal.dtz.jsDateToDateTime(new Date(now + 365 * 86400000), tz));
+    const used = new Map();
+    for (const item of items) for (const name of item.getCategories?.() ?? []) used.set(name, (used.get(name) ?? 0) + 1);
+    tagsUsed = used;
+    renderTags();
+  }
   function renderTags() {
-    const names = cal.category.fromPrefs();
+    const all = cal.category.fromPrefs();
+    // Tags in use first (most used first), then the rest as the user ordered them.
+    const names = all.map((name, index) => ({ name, index, used: tagsUsed.get(name) ?? 0 }))
+      .sort((x, y) => (y.used > 0) - (x.used > 0) || y.used - x.used || x.index - y.index).map((t) => t.name);
     const plus = el("button", { class: "mw-cal-plus", type: "button", title: "Add a tag" });
     plus.addEventListener("click", () => {
       const result = { value: "" };
@@ -98,13 +119,17 @@ function installCalendar(window) {
       Services.prefs.setStringPref(`calendar.category.color.${cal.view.formatStringForCSSRule(result.value.trim())}`, CAL_TAG_COLORS[list.length % CAL_TAG_COLORS.length]);
       Services.prefs.setStringPref("calendar.categories.names", cal.category.arrayToString(list));
     });
-    const items = names.map((name) => {
-      const color = Services.prefs.getStringPref(`calendar.category.color.${cal.view.formatStringForCSSRule(name)}`, "");
-      return el("li", { class: "mw-cal-tag", style: `--tag: ${color || "#9aa3b2"}`, title: name }, el("span", { class: "mw-tag-icon" }), el("span", { class: "mw-tag-dot" }), el("span", { class: "mw-tag-name", text: name }));
-    });
-    tags.replaceChildren(el("div", { class: "mw-cal-section-head" }, el("span", { text: "Tags" }), plus), el("ol", { class: "mw-cal-tag-list" }, ...items));
+    const visible = tagsOpen || names.length <= TAGS_SHOWN + 1 ? names : names.slice(0, TAGS_SHOWN);
+    const items = visible.map((name) => el("li", { class: "mw-cal-tag", style: `--tag: ${tagColor(name)}`, title: tagsUsed.get(name) ? `${name} (${tagsUsed.get(name)})` : name }, el("span", { class: "mw-tag-icon" }), el("span", { class: "mw-tag-name", text: name })));
+    let toggle = null;
+    if (names.length > TAGS_SHOWN + 1) {
+      toggle = el("button", { class: "mw-cal-more", type: "button", text: tagsOpen ? "Show fewer" : `Show all (${names.length})` });
+      toggle.addEventListener("click", () => { tagsOpen = !tagsOpen; renderTags(); });
+    }
+    tags.replaceChildren(el("div", { class: "mw-cal-section-head" }, el("span", { text: "Tags" }), plus), el("ol", { class: "mw-cal-tag-list" }, ...items), toggle ?? "");
   }
   renderTags();
+  void countTags().catch((error) => console.error("Mail Workspace: tags", error));
   const prefObserver = { observe: () => renderTags() };
   Services.prefs.addObserver("calendar.categories.names", prefObserver);
   Services.prefs.addObserver("calendar.category.color.", prefObserver);
@@ -177,10 +202,44 @@ function installCalendar(window) {
   schedule();
   undo.push(() => observer.disconnect());
 
-  // --- event details (right) -----------------------------------------------------------------
-  const details = add(el("aside", { id: "mw-cal-details", hidden: "true" }));
-  $("calendar-view-box")?.after(details);
-  let shown = null;
+  // --- the side panel (right): Today and the coming days, or the selected event ---------------
+  // Thunderbird's Today pane lives here now. Docked beside the views when they keep room enough
+  // (mw-narrow unset), else a sheet over them; hidden with the calendar (tasks mode).
+  const SIDE_PREF = "extensions.mailworkspace.calendar.side";
+  const SIDE_MIN = 1000; // below this width of the views' row, the panel is a sheet
+  const side = add(el("aside", { id: "mw-cal-side", tabindex: "-1" }));
+  $("calendar-view-box")?.after(side);
+  const sideToggle = add(el("button", { id: "mw-cal-side-toggle", class: "button button-flat icon-button icon-only", type: "button", title: "Today and upcoming" }));
+  $("calendarControlBarMenu")?.before(sideToggle);
+  let sideOpen = Services.prefs.getBoolPref(SIDE_PREF, true); // the docked Today panel, by choice
+  let sheetToday = false; // the Today sheet, opened by hand while narrow
+  let narrow = false;
+  let shown = null; // the event in the details
+  function updateSide() {
+    const mode = shown ? "details" : (narrow ? sheetToday : sideOpen) ? "today" : null;
+    if (mode) panel.setAttribute("mw-side", mode); else panel.removeAttribute("mw-side");
+    panel.toggleAttribute("mw-side-back", narrow ? sheetToday : sideOpen);
+    sideToggle.setAttribute("aria-pressed", String(mode === "today"));
+    if (mode === "today") void renderToday().catch((error) => console.error("Mail Workspace: today", error));
+  }
+  sideToggle.addEventListener("click", () => {
+    if (narrow) { const open = panel.getAttribute("mw-side") === "today"; shown = null; sheetToday = !open; }
+    else if (shown) { shown = null; sideOpen = true; }
+    else { sideOpen = !sideOpen; Services.prefs.setBoolPref(SIDE_PREF, sideOpen); }
+    updateSide();
+  });
+  const displayRow = $("calendarDisplayBox");
+  const header = $("calendarViewHeader");
+  const resize = new window.ResizeObserver(() => {
+    const top = `${Math.round(header?.getBoundingClientRect().height ?? 56)}px`;
+    if (top !== "0px" && panel.style.getPropertyValue("--mw-cal-head") !== top) panel.style.setProperty("--mw-cal-head", top);
+    const next = (displayRow?.getBoundingClientRect().width ?? 0) < SIDE_MIN;
+    if (next !== narrow) { narrow = next; panel.toggleAttribute("mw-narrow", narrow); if (!narrow) sheetToday = false; updateSide(); }
+  });
+  if (displayRow) resize.observe(displayRow);
+  if (header) resize.observe(header);
+  undo.push(() => resize.disconnect());
+
   const dateFormat = new Intl.DateTimeFormat(undefined, { weekday: "short", month: "short", day: "numeric", year: "numeric" });
   const duration = (a, b) => {
     const minutes = Math.round((b - a) / 60000);
@@ -198,9 +257,22 @@ function installCalendar(window) {
     return minutes === 0 ? "At the start" : `${unit[0]} ${unit[1]}${unit[0] === 1 ? "" : "s"} ${offset.inSeconds < 0 ? "before" : "after"}`;
   };
   const initials = (name) => name.replace(/<[^>]*>|mailto:/gi, "").split(/[\s@._-]+/).filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join("");
+  const sideTop = (title) => {
+    const back = el("button", { class: "mw-d-back", type: "button", title: "Back to today" }, el("span", { class: "mw-d-back-icon" }), el("span", { text: "Today" }));
+    back.addEventListener("click", () => closeDetails());
+    const close = el("button", { class: "mw-d-close", type: "button", title: "Close" });
+    close.addEventListener("click", () => { if (shown) closeDetails(); else { if (narrow) sheetToday = false; else { sideOpen = false; Services.prefs.setBoolPref(SIDE_PREF, false); } updateSide(); } });
+    return el("div", { class: "mw-d-top" }, shown ? back : null, title ? el("span", { class: "mw-cal-section-head mw-d-top-title", text: title }) : null, el("span", { class: "mw-d-spacer" }), close);
+  };
+  function closeDetails() {
+    shown = null;
+    window.currentView?.()?.setSelectedItems?.([]);
+    for (const other of panel.querySelectorAll(".mw-ag-item.selected, .mw-sd-item.selected")) other.classList.remove("selected");
+    updateSide();
+  }
   function showDetails(item) {
     shown = item;
-    if (!item) { details.hidden = true; return; }
+    if (!item) { updateSide(); return; }
     const start = item.startDate ?? item.entryDate;
     const end = item.endDate ?? item.dueDate;
     const rows = [];
@@ -218,7 +290,7 @@ function installCalendar(window) {
     if (alarms.length) row("alarm", ...alarms.map((alarm) => el("div", { text: alarmText(alarm) })));
     if (item.calendar) row("calendar", el("div", { class: "mw-d-cal", style: `--c: ${item.calendar.getProperty("color") || "#9aa3b2"}` }, el("span", { class: "mw-d-swatch" }), el("span", { text: item.calendar.name })));
     const categories = item.getCategories?.() ?? [];
-    if (categories.length) row("tags", el("div", { class: "mw-d-chips" }, ...categories.map((name) => el("span", { class: "mw-d-chip", style: `--tag: ${Services.prefs.getStringPref(`calendar.category.color.${cal.view.formatStringForCSSRule(name)}`, "#9aa3b2")}`, text: name }))));
+    if (categories.length) row("tags", el("div", { class: "mw-d-chips" }, ...categories.map((name) => el("span", { class: "mw-d-chip", style: `--tag: ${tagColor(name)}`, text: name }))));
     const description = (item.getProperty("DESCRIPTION") ?? "").trim();
     const attendees = item.getAttendees?.() ?? [];
     const status = { ACCEPTED: "yes", DECLINED: "no", TENTATIVE: "maybe" };
@@ -227,29 +299,126 @@ function installCalendar(window) {
       const me = item.calendar?.getProperty("organizerId") && a.id.toLowerCase() === String(item.calendar.getProperty("organizerId")).toLowerCase();
       return el("li", { class: "mw-d-person" }, el("span", { class: "mw-d-avatar", text: initials(name) || "?" }), el("span", { class: "mw-d-name", text: `${name}${me ? " (You)" : ""}` }), el("span", { class: `mw-d-rsvp mw-d-rsvp-${status[a.participationStatus] ?? "unknown"}`, title: a.participationStatus || "No answer yet" }));
     });
-    const close = el("button", { class: "mw-d-close", type: "button", title: "Close" });
-    close.addEventListener("click", () => { showDetails(null); window.currentView?.()?.setSelectedItems?.([]); });
     const edit = el("button", { class: "mw-d-edit", type: "button", text: "Edit" });
     edit.addEventListener("click", () => window.modifyEventWithDialog(item, true));
     const remove = el("button", { class: "mw-d-delete", type: "button", text: "Delete" });
-    remove.addEventListener("click", () => { window.currentView?.()?.setSelectedItems?.([item]); window.deleteSelectedEvents(); showDetails(null); });
+    remove.addEventListener("click", () => { window.currentView?.()?.setSelectedItems?.([item]); window.deleteSelectedEvents(); closeDetails(); });
     const readOnly = item.calendar?.readOnly;
-    details.replaceChildren(...[
-      el("div", { class: "mw-d-top" }, el("span", { class: "mw-d-spacer" }), close),
-      el("h2", { class: "mw-d-title", style: `--c: ${item.calendar?.getProperty("color") || "#5b8def"}` }, el("span", { class: `mw-d-kind${attendees.length ? " mw-d-meeting" : ""}` }), el("span", { text: item.title || "(No title)" })),
-      ...rows,
-      description ? el("div", { class: "mw-d-description", text: description }) : null,
-      attendees.length ? el("div", { class: "mw-d-attendees" }, el("div", { class: "mw-d-head", text: `Attendees (${attendees.length})` }), el("ol", {}, ...people)) : null,
+    let more = null;
+    if (description) {
+      const text = el("div", { class: "mw-d-description mw-d-clamped", text: description });
+      more = [text];
+      if (description.length > 240 || description.split("\n").length > 5) {
+        const toggle = el("button", { class: "mw-d-more", type: "button", text: "More" });
+        toggle.addEventListener("click", () => { const open = text.classList.toggle("mw-d-clamped"); toggle.textContent = open ? "More" : "Less"; });
+        more.push(toggle);
+      }
+    }
+    side.replaceChildren(...[
+      sideTop(null),
+      el("div", { class: "mw-side-body" }, ...[
+        el("h2", { class: "mw-d-title", style: `--c: ${item.calendar?.getProperty("color") || "#5b8def"}` }, el("span", { class: `mw-d-kind${attendees.length ? " mw-d-meeting" : ""}` }), el("span", { text: item.title || "(No title)" })),
+        ...rows,
+        ...(more ?? []),
+        attendees.length ? el("div", { class: "mw-d-attendees" }, el("div", { class: "mw-d-head", text: `Attendees (${attendees.length})` }), el("ol", {}, ...people)) : null,
+      ].filter(Boolean)),
       readOnly ? null : el("div", { class: "mw-d-actions" }, edit, remove),
     ].filter(Boolean));
-    details.hidden = false;
+    updateSide();
   }
   const onSelect = (event) => {
     const items = event.detail ?? [];
-    showDetails(items.length === 1 ? items[0] : null);
+    if (items.length === 1) showDetails(items[0]);
+    else if (shown) { shown = null; updateSide(); }
   };
   $("view-box")?.addEventListener("itemselect", onSelect, true);
   undo.push(() => $("view-box")?.removeEventListener("itemselect", onSelect, true));
+  const onKey = (event) => { if (event.key === "Escape" && panel.hasAttribute("mw-side") && (shown || narrow)) { event.preventDefault(); if (shown) closeDetails(); else { sheetToday = false; updateSide(); } } };
+  panel.addEventListener("keydown", onKey);
+  undo.push(() => panel.removeEventListener("keydown", onKey));
+
+  // Today: today's events (those over greyed), the tasks due by today, then the next six days.
+  const DAY = 86400000;
+  const relDay = new Intl.DateTimeFormat(undefined, { weekday: "long", day: "numeric", month: "long" });
+  const weekdayFormat = new Intl.DateTimeFormat(undefined, { weekday: "long" });
+  let todayToken = 0;
+  async function renderToday() {
+    const token = ++todayToken;
+    const composite = cal.view.getCompositeCalendar(window);
+    const now = new Date();
+    const from = new Date(now);
+    from.setHours(0, 0, 0, 0);
+    const to = new Date(from.getTime() + 7 * DAY);
+    const tz = cal.dtz.defaultTimezone;
+    const events = await composite.getItemsAsArray(Ci.calICalendar.ITEM_FILTER_TYPE_EVENT | Ci.calICalendar.ITEM_FILTER_CLASS_OCCURRENCES, 0, cal.dtz.jsDateToDateTime(from, tz), cal.dtz.jsDateToDateTime(to, tz));
+    const todos = await composite.getItemsAsArray(Ci.calICalendar.ITEM_FILTER_TYPE_TODO | Ci.calICalendar.ITEM_FILTER_COMPLETED_NO | Ci.calICalendar.ITEM_FILTER_CLASS_OCCURRENCES, 0, null, null);
+    if (token !== todayToken) return;
+    const span = (item) => {
+      const a = jsDate(item.startDate);
+      const b = item.endDate ? jsDate(item.endDate) : a;
+      return [a, b > a ? b : new Date(a.getTime() + 1)];
+    };
+    const days = [];
+    for (let i = 0; i < 7; i++) {
+      const start = new Date(from);
+      start.setDate(from.getDate() + i);
+      const end = new Date(start);
+      end.setDate(start.getDate() + 1);
+      const list = events.filter((item) => { const [a, b] = span(item); return a < end && b > start; });
+      list.sort((x, y) => (y.startDate.isDate - x.startDate.isDate) || (jsDate(x.startDate) - jsDate(y.startDate)));
+      days.push({ start, end, list });
+    }
+    const endOfToday = days[0].end;
+    const due = todos.filter((todo) => todo.dueDate && jsDate(todo.dueDate) < endOfToday).sort((x, y) => jsDate(x.dueDate) - jsDate(y.dueDate));
+    const itemRow = (item, day) => {
+      const [, b] = span(item);
+      const past = !item.startDate.isDate && b <= now;
+      const multi = item.startDate.isDate ? (span(item)[1] - span(item)[0]) > DAY : jsDate(item.startDate) < day.start || b > day.end;
+      const time = item.startDate.isDate ? "All day" : multi ? (jsDate(item.startDate) < day.start ? (b > day.end ? "All day" : `until ${timeFormat.format(b)}`) : `from ${timeFormat.format(jsDate(item.startDate))}`) : timeFormat.format(jsDate(item.startDate));
+      const li = el("li", { class: `mw-sd-item${past ? " mw-sd-past" : ""}`, style: `--c: ${item.calendar?.getProperty("color") || "#5b8def"}`, tabindex: "0", title: `${item.title || "(No title)"}\n${range(item)}` },
+        el("span", { class: "mw-sd-bar" }),
+        el("span", { class: "mw-sd-main" }, el("span", { class: "mw-sd-title", text: item.title || "(No title)" }), item.getProperty("LOCATION") ? el("span", { class: "mw-sd-where", text: item.getProperty("LOCATION") }) : null),
+        el("span", { class: "mw-sd-time", text: time }));
+      const open = () => { for (const other of side.querySelectorAll(".mw-sd-item.selected")) other.classList.remove("selected"); li.classList.add("selected"); showDetails(item); };
+      li.addEventListener("click", open);
+      li.addEventListener("keydown", (event) => { if (event.key === "Enter") open(); });
+      li.addEventListener("dblclick", () => window.modifyEventWithDialog(item, true));
+      return li;
+    };
+    const taskRow = (todo) => {
+      const overdue = jsDate(todo.dueDate) < (todo.dueDate.isDate ? days[0].start : now);
+      const check = el("button", { class: "mw-sd-check", type: "button", title: "Mark as done" });
+      check.addEventListener("click", (event) => {
+        event.stopPropagation();
+        const copy = todo.clone();
+        copy.isCompleted = true;
+        void todo.calendar.modifyItem(copy, todo).catch((error) => console.error("Mail Workspace: complete task", error));
+      });
+      const li = el("li", { class: `mw-sd-task${overdue ? " mw-sd-overdue" : ""}`, tabindex: "0" }, check,
+        el("span", { class: "mw-sd-title", text: todo.title || "(No title)" }),
+        el("span", { class: "mw-sd-time", text: overdue ? (todo.dueDate.isDate || jsDate(todo.dueDate) < days[0].start ? new Intl.DateTimeFormat(undefined, { day: "numeric", month: "short" }).format(jsDate(todo.dueDate)) : timeFormat.format(jsDate(todo.dueDate))) : (todo.dueDate.isDate ? "Today" : timeFormat.format(jsDate(todo.dueDate))) }));
+      li.addEventListener("dblclick", () => window.modifyEventWithDialog(todo, true));
+      li.addEventListener("keydown", (event) => { if (event.key === "Enter") window.modifyEventWithDialog(todo, true); });
+      return li;
+    };
+    const sections = [];
+    const todayList = days[0].list;
+    sections.push(el("section", { class: "mw-sd-day mw-sd-today" },
+      el("div", { class: "mw-sd-date" }, el("span", { class: "mw-sd-num", text: String(now.getDate()) }), el("span", { class: "mw-sd-datetext" }, el("span", { class: "mw-sd-dow", text: weekdayFormat.format(now) }), el("span", { class: "mw-sd-month", text: relDay.format(now).replace(weekdayFormat.format(now), "").replace(/^[,\s]+/, "") }))),
+      todayList.length ? el("ol", { class: "mw-sd-list" }, ...todayList.map((item) => itemRow(item, days[0]))) : el("p", { class: "mw-sd-empty", text: "Nothing planned today." })));
+    if (due.length) sections.push(el("section", { class: "mw-sd-day" }, el("h3", { class: "mw-cal-section-head", text: `Tasks due (${due.length})` }), el("ol", { class: "mw-sd-list" }, ...due.slice(0, 12).map(taskRow))));
+    const later = days.slice(1).filter((day) => day.list.length);
+    for (const day of later) {
+      const label = day === days[1] ? "Tomorrow" : relDay.format(day.start);
+      sections.push(el("section", { class: "mw-sd-day" }, el("h3", { class: "mw-cal-section-head", text: label }), el("ol", { class: "mw-sd-list" }, ...day.list.map((item) => itemRow(item, day)))));
+    }
+    if (!later.length) sections.push(el("p", { class: "mw-sd-empty mw-sd-quiet", text: "Nothing else this week." }));
+    if (shown) return; // an event was opened meanwhile
+    side.replaceChildren(sideTop("Today"), el("div", { class: "mw-side-body" }, ...sections));
+  }
+  // Keep Today current: past events grey out, and the day turns over at midnight.
+  const tick = window.setInterval(() => { if (panel.getAttribute("mw-side") === "today") void renderToday().catch(() => {}); }, 60000);
+  undo.push(() => window.clearInterval(tick));
 
   // --- Agenda --------------------------------------------------------------------------------
   const agenda = add(el("div", { id: "mw-agenda", hidden: "true" }));
@@ -305,10 +474,19 @@ function installCalendar(window) {
   // The agenda follows changes to the calendars.
   const calObserver = {
     QueryInterface: ChromeUtils.generateQI(["calIObserver"]),
-    onStartBatch() {}, onEndBatch() {}, onLoad() {}, onError() {}, onPropertyChanged() {}, onPropertyDeleting() {},
-    onAddItem() { if (agendaOn) void renderAgenda(); }, onModifyItem(item) { if (agendaOn) void renderAgenda(); if (shown && item.hashId === shown.hashId) showDetails(item); },
-    onDeleteItem(item) { if (agendaOn) void renderAgenda(); if (shown && item.hashId === shown.hashId) showDetails(null); },
+    onStartBatch() {}, onEndBatch() {}, onLoad() { changed(); }, onError() {}, onPropertyChanged() {}, onPropertyDeleting() {},
+    onAddItem() { changed(); }, onModifyItem(item) { changed(); if (shown && item.hashId === shown.hashId) showDetails(item); },
+    onDeleteItem(item) { changed(); if (shown && item.hashId === shown.hashId) closeDetails(); },
   };
+  let changeTimer = 0;
+  function changed() {
+    window.clearTimeout(changeTimer);
+    changeTimer = window.setTimeout(() => {
+      if (agendaOn) void renderAgenda().catch(() => {});
+      if (panel.getAttribute("mw-side") === "today") void renderToday().catch(() => {});
+      void countTags().catch(() => {});
+    }, 150);
+  }
   try { cal.view.getCompositeCalendar(window).addObserver(calObserver); undo.push(() => cal.view.getCompositeCalendar(window).removeObserver(calObserver)); } catch (error) { console.error(error); }
 
   // A small menu under a button.
@@ -328,12 +506,14 @@ function installCalendar(window) {
   }
 
   panel.setAttribute("mw-calendar", "true");
+  updateSide();
   return () => {
     for (const fn of undo) { try { fn(); } catch { /* gone */ } }
     for (const node of added) node.remove();
     document.getElementById("mw-cal-menu")?.remove();
-    for (const name of ["mw-calendar", "mw-agenda", "mw-search"]) panel.removeAttribute(name);
+    for (const name of ["mw-calendar", "mw-agenda", "mw-search", "mw-side", "mw-narrow", "mw-side-back"]) panel.removeAttribute(name);
     interval?.removeAttribute("mw-hidden");
+    panel.style.removeProperty("--mw-cal-head");
     if (listLabel && oldListLabel) listLabel.textContent = oldListLabel;
     for (const heading of document.querySelectorAll("#view-box .day-column-heading")) { heading.querySelector(".mw-day")?.remove(); delete heading.dataset.mwText; }
     for (const time of document.querySelectorAll("#view-box .mw-ev-time, #view-box .mw-ev-people, #view-box .mw-zone")) time.remove();

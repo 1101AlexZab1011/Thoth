@@ -370,3 +370,9 @@
 .mw-web-login > img { width: 18px; height: 18px; -moz-context-properties: fill; fill: currentColor; }
 .mw-web-login-text { flex: 1; min-width: 0; }
 :root[mw-workspace] .mw-web-login-btn.primary { background: var(--mw-primary); border-color: transparent; color: var(--mw-on-primary); font-weight: 600; }
+
+/* A tab never grows past the room it has (with a dock open, the tabs' grid sized its column to
+   the content and the page slid under the dock). */
+#tabmail-tabbox { min-width: 0 !important; }
+#tabpanelcontainer { min-width: 0 !important; grid-template-columns: minmax(0, 1fr) !important; }
+#tabpanelcontainer > * { min-width: 0 !important; }

@@ -327,14 +327,15 @@ function installTasks(window) {
         el("h2", { class: "mw-d-title", text: item.title || "(No title)" }),
         el("button", { class: `mw-p-star${starred ? " on" : ""}`, type: "button", title: starred ? "Unstar" : "Star", onclick: () => void toggleStar(item) }),
         el("button", { class: "mw-d-close", type: "button", title: "Close", onclick: () => { state.selected = null; render(); } })),
-      goal ? el("p", { class: "mw-d-goal", text: goal }) : null,
+      goal ? el("p", { class: "mw-d-goal mw-d-clamped", text: goal }) : null,
+      goal && (goal.length > 200 || goal.split("\n").length > 4) ? el("button", { class: "mw-d-more", type: "button", text: "More", onclick: (event) => { const text = event.currentTarget.previousElementSibling; const open = text.classList.toggle("mw-d-clamped"); event.currentTarget.textContent = open ? "More" : "Less"; } }) : null,
       el("div", { class: "mw-p-progress big" }, el("span", { class: "mw-p-bar" }, el("span", { style: `width: ${pct}%` })), el("span", { class: "mw-p-pct", text: `${pct}%` })),
       el("div", { class: "mw-d-facts" }, facts),
-      el("section", { class: "mw-d-subtasks" },
+      el("section", { class: "mw-td-subtasks" },
         el("div", { class: "mw-d-section-head" }, el("span", { text: "Subtasks" }), el("span", { class: "mw-t-count", text: String(kids.length) })),
-        el("ol", {}, kids.map((kid) => el("li", { class: `mw-d-sub${kid.isCompleted ? " done" : ""}` },
+        el("ol", {}, kids.map((kid) => el("li", { class: `mw-td-sub${kid.isCompleted ? " done" : ""}` },
           el("input", { type: "checkbox", class: "mw-t-check", checked: kid.isCompleted, onclick: () => void toggleDone(kid) }),
-          el("button", { class: "mw-d-sub-title", type: "button", text: kid.title, onclick: () => { state.selected = kid.id; render(); }, ondblclick: () => edit(kid) }),
+          el("button", { class: "mw-td-sub-title", type: "button", text: kid.title, onclick: () => { state.selected = kid.id; render(); }, ondblclick: () => edit(kid) }),
           dueText(kid) ? chip("due", "event", dueText(kid)) : null))),
         item.calendar?.readOnly ? null : addField),
       attachments.length ? el("section", { class: "mw-d-attach" }, el("div", { class: "mw-d-section-head" }, el("span", { text: "Attachments" }), el("span", { class: "mw-t-count", text: String(attachments.length) })),
@@ -379,6 +380,8 @@ function installTasks(window) {
     root.querySelector(".mw-t-list").scrollTop = scroll;
     if (focused) search.focus();
   }
+
+  root.addEventListener("keydown", (event) => { if (event.key === "Escape" && state.selected && !event.target.closest?.("input")) { event.preventDefault(); state.selected = null; render(); } });
 
   // --- data ----------------------------------------------------------------------------------
   let loading = null;
