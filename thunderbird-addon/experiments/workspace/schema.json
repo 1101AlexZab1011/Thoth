@@ -503,6 +503,61 @@
             }
           }
         ]
+      },
+      {
+        "name": "getSettings",
+        "type": "function",
+        "async": true,
+        "description": "The values of the settings the settings page shows (an allow-list), by pref name.",
+        "parameters": [
+          {
+            "name": "names",
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "optional": true
+          }
+        ]
+      },
+      {
+        "name": "setSetting",
+        "type": "function",
+        "async": true,
+        "description": "Change one allow-listed setting.",
+        "parameters": [
+          {
+            "name": "name",
+            "type": "string"
+          },
+          {
+            "name": "value",
+            "type": "any"
+          }
+        ]
+      },
+      {
+        "name": "settingsAction",
+        "type": "function",
+        "async": true,
+        "description": "Open a settings dialog or page (accounts, add-mail, add-calendar, add-addressbook, keys, passwords, filters, advanced, config).",
+        "parameters": [
+          {
+            "name": "action",
+            "type": "string",
+            "enum": [
+              "accounts",
+              "add-mail",
+              "add-calendar",
+              "add-addressbook",
+              "keys",
+              "passwords",
+              "filters",
+              "advanced",
+              "config"
+            ]
+          }
+        ]
       }
     ],
     "events": [

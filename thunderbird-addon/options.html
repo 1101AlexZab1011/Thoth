@@ -19,41 +19,85 @@
   .segmented button[aria-checked="true"] { background: var(--mw-primary-soft); color: var(--mw-primary-soft-text); }
   .code-preview { border-radius: var(--mw-radius); overflow: hidden; }
   .code-preview pre { margin: 0; padding: 14px 16px; font: 13px/1.6 var(--mw-font-mono); overflow-x: auto; }
+  /* One settings page: sections listed on the left, rows of label + hint + control. */
+  main { max-width: 980px; grid-template-columns: 190px minmax(0, 1fr); align-items: start; column-gap: 28px; }
+  main > h1 { grid-column: 1 / -1; display: flex; align-items: center; gap: 12px; }
+  main > h1 img { width: 36px; height: 36px; }
+  nav.toc { position: sticky; top: 20px; display: grid; gap: 2px; grid-row: span 20; }
+  nav.toc a { display: block; padding: 7px 12px; border-radius: var(--mw-radius-pill); color: var(--mw-text-2); text-decoration: none; font-weight: 560; font-size: 13.5px; }
+  nav.toc a:hover { background: var(--mw-hover); color: var(--mw-text); }
+  nav.toc a.active { background: var(--mw-primary-soft); color: var(--mw-primary-soft-text); }
+  section { grid-column: 2; scroll-margin-top: 20px; }
+  .setting { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 20px; align-items: center; padding: 10px 0; border-top: 1px solid var(--mw-border); }
+  .setting:first-of-type { border-top: 0; }
+  .setting-label { font-weight: 560; color: var(--mw-text); }
+  .setting-hint { grid-column: 1; font-size: 12.5px; color: var(--mw-text-2); }
+  .setting-control { grid-column: 2; grid-row: 1 / span 2; display: flex; align-items: center; gap: 8px; }
+  .setting-control input[type="number"] { width: 72px; }
+  .switch { appearance: none; width: 38px; height: 22px; border-radius: 11px; background: var(--mw-border-strong); position: relative; cursor: pointer; transition: background var(--mw-fast, .15s); margin: 0; }
+  .switch::after { content: ""; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.25); transition: transform var(--mw-fast, .15s); }
+  .switch:checked { background: var(--mw-primary); }
+  .switch:checked::after { transform: translateX(16px); }
+  .switch:focus-visible { outline: 2px solid var(--mw-primary); outline-offset: 2px; }
+  .actions { display: flex; flex-wrap: wrap; gap: 8px; }
+  @media (max-width: 760px) { main { grid-template-columns: minmax(0, 1fr); } nav.toc { display: none; } section { grid-column: 1; } }
 </style>
 <main>
-  <h1>Thoth</h1>
-  <section>
+  <h1><img src="icons/thoth.svg" alt="">Settings</h1>
+  <nav class="toc" aria-label="Sections">
+    <a href="#appearance-section">Appearance</a>
+    <a href="#mail-section">Mail</a>
+    <a href="#writing-section">Writing</a>
+    <a href="#calendar-section">Calendar</a>
+    <a href="#chat-section">Chat</a>
+    <a href="#accounts-section">Accounts &amp; security</a>
+    <a href="#code-section">Code theme</a>
+    <a href="#connection-section">Agent connection</a>
+    <a href="#keyboard-section">Keyboard</a>
+    <a href="#advanced-section">Advanced</a>
+  </nav>
+  <section id="appearance-section">
     <h2>Appearance</h2>
     <p>Light, dark, or follow the system. The whole app switches with it.</p>
     <div id="appearance" class="segmented" role="radiogroup" aria-label="Appearance"></div>
   </section>
-  <section>
+  <section id="mail-section" data-settings="mail"><h2>Mail</h2></section>
+  <section id="writing-section" data-settings="writing"><h2>Writing</h2></section>
+  <section id="calendar-section" data-settings="calendar"><h2>Calendar</h2></section>
+  <section id="chat-section">
     <h2>Chat</h2>
     <p>How times are shown in the chat.</p>
     <div id="clock" class="segmented" role="radiogroup" aria-label="Time format"></div>
   </section>
-  <section>
+  <section id="accounts-section">
+    <h2>Accounts &amp; security</h2>
+    <p>Mail accounts, calendars and address books, encryption keys and saved passwords.</p>
+    <div class="actions" id="account-actions"></div>
+  </section>
+  <section id="code-section">
     <h2>Code theme</h2>
     <p>Colours for code, text and markdown source in the file viewer.</p>
     <div class="row"><span id="code-theme"></span></div>
     <div id="code-preview" class="code-preview" aria-label="Preview"></div>
   </section>
-  <section>
-    <h2>Pair with listener-mcp</h2>
+  <section id="connection-section">
+    <h2>Agent connection</h2>
     <p>The chat, the file browser, the viewer and artifacts talk to the local <a href="https://github.com/1101AlexZab1011/listener-mcp">listener-mcp</a> broker. Run this once, then press Pair now within ten minutes:</p>
     <pre id="pair-command"></pre>
     <div class="row"><button id="pair" class="btn primary" type="button">Pair now</button><span id="status" role="status"></span></div>
-  </section>
-  <section>
-    <h2>Manual token</h2>
     <p>Or paste a token created with <code>listener-mcp token create --origin …</code>.</p>
     <label>Broker URL <input id="endpoint" class="input" type="url" value="http://127.0.0.1:47800" required></label>
     <label>Access token <input id="token" class="input" type="password" autocomplete="off"></label>
     <div class="row"><button id="save" class="btn" type="button">Save</button></div>
   </section>
-  <section>
+  <section id="keyboard-section">
     <h2>Keyboard</h2>
-    <p><kbd>Ctrl</kbd>+<kbd>5</kbd> chat dock · <kbd>Ctrl</kbd>+<kbd>6</kbd> file dock · <kbd>Ctrl</kbd>+<kbd>7</kbd> Files · <kbd>Ctrl</kbd>+<kbd>8</kbd> Artifacts · <kbd>Ctrl</kbd>+<kbd>9</kbd> Paint</p>
+    <p><kbd>Ctrl</kbd>+<kbd>5</kbd> chat dock · <kbd>Ctrl</kbd>+<kbd>6</kbd> file dock · <kbd>Ctrl</kbd>+<kbd>7</kbd> Files · <kbd>Ctrl</kbd>+<kbd>8</kbd> Artifacts · <kbd>Ctrl</kbd>+<kbd>9</kbd> Paint · <kbd>Ctrl</kbd>+<kbd>K</kbd> search · <kbd>Ctrl</kbd>+<kbd>`</kbd> terminal</p>
+  </section>
+  <section id="advanced-section">
+    <h2>Advanced</h2>
+    <p>The full list of mail settings (fonts, attachments, network, junk mail and more), and the configuration editor.</p>
+    <div class="actions" id="advanced-actions"></div>
   </section>
 </main>
 <script type="module" src="options.js"></script>

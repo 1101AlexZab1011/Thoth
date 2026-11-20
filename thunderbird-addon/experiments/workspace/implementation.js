@@ -15,7 +15,7 @@ var workspace = class extends ExtensionAPI {
     const resProto = Services.io.getProtocolHandler("resource").QueryInterface(Ci.nsIResProtocolHandler);
     resProto.setSubstitutionWithFlags(RESOURCE_HOST, this.extension.rootURI, resProto.ALLOW_CONTENT_ACCESS);
     this.scope = { Services, ChromeUtils, Ci, Cc, Cu, ExtensionParent, IOUtils, PathUtils, console };
-    for (const file of ["address.js", "shortcuts.js", "websessions.js", "webhistory.js", "layout.js", "shell.js", "groups.js", "calendar.js", "tasks.js", "mail.js", "web.js", "webmenu.js", "appmenu.js", "aboutlogins.js", "automation.js"]) {
+    for (const file of ["address.js", "shortcuts.js", "websessions.js", "webhistory.js", "layout.js", "shell.js", "groups.js", "calendar.js", "tasks.js", "mail.js", "web.js", "webmenu.js", "appmenu.js", "settings.js", "aboutlogins.js", "automation.js"]) {
       // Through resource://, which is trusted also when the add-on runs from a folder.
       Services.scriptloader.loadSubScript(`resource://${RESOURCE_HOST}/experiments/workspace/${file}?${Date.now()}`, this.scope);
     }
@@ -153,6 +153,9 @@ var workspace = class extends ExtensionAPI {
         async webClick(x, y) { return scope.webClick(self.mainWindow(), x, y); },
         async setAppearance(mode) { return scope.setAppearance(mode, self.messengerWindows()); },
         async pickPath(options) { return pickPath(self.mainWindow(), options ?? {}); },
+        async getSettings(names) { return scope.getSettings(names ?? null); },
+        async setSetting(name, value) { return scope.setSetting(name, value); },
+        async settingsAction(action) { return scope.settingsAction(self.mainWindow(), action); },
         async focusOwnTab() { for (const window of self.messengerWindows()) scope.markTabs(window, self.extension); return true; },
         onDockChanged: new ExtensionCommon.EventManager({
           context,

@@ -295,3 +295,23 @@
   appearance: none !important; border: 0 !important; background: none !important; box-shadow: none !important; margin: 0 !important; padding: 0 !important; height: auto;
 }
 :root[mw-mail] #header-view-toolbar .toolbarbutton-menubutton-dropmarker { margin-inline-start: 4px !important; }
+
+/* --- Advanced settings (about:preferences), reached from Thoth's Settings: the workspace's
+   surfaces and type, without what doesn't belong to this app — IM Chat, Export for Mobile,
+   updates, the start page, the default-client check, data collection for Thunderbird, and the
+   footer links to add-ons. ---- */
+:root:has(#categories) body, :root:has(#categories) #preferences-body { background: var(--mw-bg) !important; font-family: var(--mw-font) !important; color: var(--mw-text); }
+:root:has(#categories) #category-chat, :root:has(#categories) #category-qrexport,
+:root:has(#categories) [data-category="paneChat"], :root:has(#categories) [data-category="paneQrExport"],
+:root:has(#categories) #updatesCategory, :root:has(#categories) #updateApp,
+:root:has(#categories) #startPageSettings, :root:has(#categories) #checkDefaultBox, :root:has(#categories) #systemDefaultsGroup,
+:root:has(#categories) #privacyDataCollectionCategory, :root:has(#categories) #dataCollectionGroup,
+:root:has(#categories) #addonsButton, :root:has(#categories) #accountButton { display: none !important; }
+:root:has(#categories) #categories > richlistitem { border-radius: var(--mw-radius-pill) !important; margin-block: 1px !important; font: 560 14px var(--mw-font) !important; color: var(--mw-text-2) !important; }
+:root:has(#categories) #categories > richlistitem:hover { background: var(--mw-hover) !important; color: var(--mw-text) !important; }
+:root:has(#categories) #categories > richlistitem[selected] { background: var(--mw-primary-soft) !important; color: var(--mw-primary-soft-text) !important; }
+:root:has(#categories) .header-name, :root:has(#categories) h1 { font: 650 22px var(--mw-font) !important; color: var(--mw-text) !important; }
+:root:has(#categories) h2, :root:has(#categories) legend, :root:has(#categories) .subcategory h2 { font: 650 15px var(--mw-font) !important; color: var(--mw-text) !important; }
+:root:has(#categories) #mainPrefPane > :is(div, fieldset, groupbox):not([hidden]) { border-radius: var(--mw-radius-l); }
+:root:has(#categories) button:not(.spaces-toolbar-button), :root:has(#categories) menulist { border-radius: var(--mw-radius-pill) !important; }
+:root:has(#categories) #searchInput { border-radius: var(--mw-radius-pill) !important; }

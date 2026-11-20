@@ -47,6 +47,8 @@ async function installSpaces() {
 
 export async function openSpace(name, query = "") {
   if (name === "browser" || name === "web") return browser.workspace.openWeb(query, {});
+  // Settings is our page (the Settings space is redirected here; Thunderbird's list is "Advanced").
+  if (name === "settings") { await browser.runtime.openOptionsPage(); await browser.workspace.focusOwnTab(); return { space: name }; }
   const space = SPACES.find((candidate) => candidate.name === name);
   if (!space) return browser.workspace.openSpace(name);
   const [found] = await browser.spaces.query({ name: space.name });

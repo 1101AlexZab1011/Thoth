@@ -188,6 +188,8 @@ function applyLayout(window, ctx) {
   let stopTasks = () => {};
   try { stopTasks = installTasks(window); } catch (error) { console.error("Thoth: tasks", error); }
   dropEchoTooltips(window);
+  let stopSettings = () => {};
+  try { stopSettings = installSettingsSpace(window, ctx); } catch (error) { console.error("Thoth: settings", error); }
   // The window is titled "… - Thoth", not "… - Mozilla Thunderbird".
   const root = document.documentElement;
   const oldModifier = root.getAttribute("titlemodifier");
@@ -239,6 +241,7 @@ function applyLayout(window, ctx) {
     tabmail.unregisterTabMonitor(monitor);
     observer.disconnect();
     stopSearch();
+    stopSettings();
     if (oldModifier) root.setAttribute("titlemodifier", oldModifier);
     stopCalendar();
     stopTasks();
@@ -278,7 +281,7 @@ function removeLayout(window, sheetUrl) {
 // address book documents inside it get panes.css. Both build on the same
 // tokens, and both are removed again when the add-on stops.
 
-var PANE_DOCS = /^(about:(3pane|message|addressbook)|chrome:\/\/messenger\/content\/multimessageview\.xhtml)/;
+var PANE_DOCS = /^(about:(3pane|message|addressbook|preferences)|chrome:\/\/messenger\/content\/multimessageview\.xhtml)/;
 var themeObserver = null;
 var themedDocs = new Set();
 
