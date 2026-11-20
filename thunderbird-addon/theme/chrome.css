@@ -387,3 +387,6 @@
 .mw-app-about-version { font: 12.5px var(--mw-font); color: var(--mw-text-2); min-height: 1em; }
 .mw-app-about-base { max-width: 240px; font: 12px/1.4 var(--mw-font); color: var(--mw-text-3); }
 .mw-app-menu .mw-app-about img.mw-app-about-logo { width: 64px !important; height: 64px !important; max-width: none !important; }
+/* A newer Thoth is available: a dot on the ☰ button (its menu offers to install it). */
+#mw-appmenu-button[mw-update] { position: relative; }
+#mw-appmenu-button[mw-update]::after { content: ""; position: absolute; top: 6px; right: 6px; width: 8px; height: 8px; border-radius: 50%; background: var(--mw-primary); box-shadow: 0 0 0 2px var(--mw-bg); }

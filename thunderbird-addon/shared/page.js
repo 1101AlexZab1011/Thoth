@@ -6,6 +6,29 @@ import { followKeyHints } from "./keys.js";
 
 followKeyHints();
 
+// Every page's file input opens Thunderbird's own chooser over the window as a dialog: a page's
+// native chooser has no parent window, and tiling window managers open it as a screen-sized window.
+// The chosen files reach the input as usual (its change event, input.files).
+const MIME = { png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif", webp: "image/webp", svg: "image/svg+xml", bmp: "image/bmp", pdf: "application/pdf", txt: "text/plain", md: "text/markdown", csv: "text/csv", json: "application/json" };
+const nativeClick = HTMLInputElement.prototype.click;
+HTMLInputElement.prototype.click = function click() {
+  if (this.type !== "file" || typeof browser === "undefined" || !browser.workspace?.pickPath) return nativeClick.call(this);
+  const input = this;
+  const images = /image/.test(input.accept ?? "");
+  void browser.workspace.pickPath({ mode: "open", filter: images ? "images" : "all", read: true, multiple: input.multiple })
+    .then((picked) => {
+      const list = [].concat(picked ?? []);
+      if (!list.length) return;
+      const transfer = new DataTransfer();
+      for (const { name, base64 } of list) {
+        const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+        transfer.items.add(new File([bytes], name, { type: MIME[name.split(".").pop().toLowerCase()] ?? "" }));
+      }
+      input.files = transfer.files;
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+    }, (error) => { console.warn("Thoth: file chooser", error); nativeClick.call(input); });
+};
+
 const handlers = new Map();
 let agentInputUntil = 0;
 /** True while the agent is sending keyboard or mouse input: user-only controls ignore it. */

@@ -15,7 +15,7 @@ var workspace = class extends ExtensionAPI {
     const resProto = Services.io.getProtocolHandler("resource").QueryInterface(Ci.nsIResProtocolHandler);
     resProto.setSubstitutionWithFlags(RESOURCE_HOST, this.extension.rootURI, resProto.ALLOW_CONTENT_ACCESS);
     this.scope = { Services, ChromeUtils, Ci, Cc, Cu, ExtensionParent, IOUtils, PathUtils, console };
-    for (const file of ["address.js", "shortcuts.js", "websessions.js", "webhistory.js", "layout.js", "shell.js", "groups.js", "calendar.js", "tasks.js", "mail.js", "web.js", "webmenu.js", "appmenu.js", "settings.js", "aboutlogins.js", "automation.js"]) {
+    for (const file of ["address.js", "shortcuts.js", "websessions.js", "webhistory.js", "layout.js", "shell.js", "groups.js", "calendar.js", "tasks.js", "mail.js", "web.js", "webmenu.js", "appmenu.js", "updates.js", "settings.js", "aboutlogins.js", "automation.js"]) {
       // Through resource://, which is trusted also when the add-on runs from a folder.
       Services.scriptloader.loadSubScript(`resource://${RESOURCE_HOST}/experiments/workspace/${file}?${Date.now()}`, this.scope);
     }
@@ -153,6 +153,8 @@ var workspace = class extends ExtensionAPI {
         async webClick(x, y) { return scope.webClick(self.mainWindow(), x, y); },
         async setAppearance(mode) { return scope.setAppearance(mode, self.messengerWindows()); },
         async pickPath(options) { return pickPath(self.mainWindow(), options ?? {}); },
+        async setUpdate(info) { return scope.setUpdateOffer(info ?? null, self.messengerWindows()); },
+        async installUpdate(url) { return scope.installThothUpdate(url); },
         async getSettings(names) { return scope.getSettings(names ?? null); },
         async setSetting(name, value) { return scope.setSetting(name, value); },
         async settingsAction(action) { return scope.settingsAction(self.mainWindow(), action); },
@@ -196,10 +198,10 @@ var workspace = class extends ExtensionAPI {
  * or a file to save ("save"), starting in `path` (~ is the home folder). Resolves to the chosen
  * path, or null when cancelled.
  */
-function pickPath(window, { mode = "folder", title = "", path = "" } = {}) {
+function pickPath(window, { mode = "folder", title = "", path = "", filter = "all", read = false, multiple = false } = {}) {
   const picker = Cc["@mozilla.org/filepicker;1"].createInstance(Ci.nsIFilePicker);
   const modes = { folder: Ci.nsIFilePicker.modeGetFolder, open: Ci.nsIFilePicker.modeOpen, save: Ci.nsIFilePicker.modeSave };
-  picker.init(window.browsingContext, title || (mode === "folder" ? "Choose a folder" : "Choose a file"), modes[mode] ?? modes.folder);
+  picker.init(window.browsingContext, title || (mode === "folder" ? "Choose a folder" : multiple ? "Choose files" : "Choose a file"), mode === "open" && multiple ? Ci.nsIFilePicker.modeOpenMultiple : modes[mode] ?? modes.folder);
   const home = Services.dirsvc.get("Home", Ci.nsIFile).path;
   const full = String(path || "").replace(/^~(?=\/|$)/, home);
   try {
@@ -209,6 +211,29 @@ function pickPath(window, { mode = "folder", title = "", path = "" } = {}) {
     if (dir) picker.displayDirectory = dir;
   } catch { /* start wherever the chooser likes */ }
   if (mode === "save" && full) picker.defaultString = full.split("/").pop();
+  if (mode !== "folder" && filter === "images") picker.appendFilters(Ci.nsIFilePicker.filterImages);
   if (mode !== "folder") picker.appendFilters(Ci.nsIFilePicker.filterAll);
-  return new Promise((resolve) => picker.open((result) => resolve(result === Ci.nsIFilePicker.returnCancel ? null : picker.file?.path ?? null)));
+  const chosenPaths = () => {
+    if (!(mode === "open" && multiple)) return picker.file?.path ? [picker.file.path] : [];
+    const out = [];
+    const files = picker.files;
+    while (files.hasMoreElements()) out.push(files.getNext().QueryInterface(Ci.nsIFile).path);
+    return out;
+  };
+  return new Promise((resolve) => picker.open((result) => resolve(result === Ci.nsIFilePicker.returnCancel ? null : chosenPaths())))
+    .then(async (chosen) => {
+      if (!chosen?.length) return null;
+      if (!read) return multiple ? chosen : chosen[0];
+      // The files' bytes for the page (an image for a document, a chat attachment), up to 100 MB each.
+      const readOne = async (file) => {
+        const info = await IOUtils.stat(file);
+        if (info.size > 100 * 1024 * 1024) throw new Error(`${PathUtils.filename(file)} is larger than 100 MB`);
+        const bytes = await IOUtils.read(file);
+        let binary = "";
+        for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+        return { path: file.replaceAll("\\", "/"), name: PathUtils.filename(file), base64: btoa(binary) };
+      };
+      const all = await Promise.all(chosen.map(readOne));
+      return multiple ? all : all[0];
+    });
 }

@@ -15,6 +15,9 @@ jobs:
           node-version: 24
       - run: npm ci
       - run: npm test
+      # The add-on carries the tag's version, so the update check in Thoth (background/updates.js)
+      # sees an installed release as current and never offers it again.
+      - run: node scripts/stamp-version.mjs "$GITHUB_REF_NAME"
       - run: npm run chat:addon
       - uses: softprops/action-gh-release@v2
         with:

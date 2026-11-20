@@ -604,7 +604,7 @@ function renderToolbar() {
       group(big("insert_page_break", "Breaks", "Insert a page break", () => [{ label: "Insert page break", run: insertPageBreak }], null, { menu: true })),
       group(big("table", "Table", "Insert table", (button) => tableGrid(button, (rows, cols) => insertTable(rows, cols), { more: insertCustomTable }))),
       group(big("image", "Image", "Insert image", () => [
-        { label: "Image from file", run: () => ui.imageInput.click() },
+        { label: "Image from file…", run: () => void chooseImageFile() },
         { label: "Image from the project…", run: async () => { const path = await ask({ title: "Image", message: "Path relative to the document", value: "figures/", ok: "Next" }); if (path) await placeFigure(path); } },
         { label: "Image from URL…", run: async () => { const url = await ask({ title: "Image from URL", value: "https://", ok: "Next" }); if (url) await placeFigure(url); } },
       ], null, { menu: true })),
@@ -1559,7 +1559,7 @@ async function insertSymbol() {
 
 function insertFigure(event) {
   contextMenu(event, [
-    { label: "Upload an image…", icon: "upload", run: () => ui.imageInput.click() },
+    { label: "Upload an image…", icon: "upload", run: () => void chooseImageFile() },
     { label: "Use an image in the project…", icon: "image", run: async () => {
       const path = await ask({ title: "Figure", message: "Path relative to the document", value: "figures/", ok: "Next" });
       if (path) await placeFigure(path);
@@ -1576,6 +1576,23 @@ async function placeFigure(path, caption) {
   const name = nameOf(path).replace(/\.[^.]+$/, "").replace(/[^\w-]+/g, "-").toLowerCase();
   const text = caption ?? await ask({ title: "Caption", value: "", placeholder: "What the figure shows", ok: "Insert" }) ?? "";
   editor.insertMarkdown(`![${text}](${path}){#fig-${name}}`);
+}
+
+/**
+ * Image from file: Thunderbird's own chooser, over the window as a dialog (a page's file input opens
+ * an unparented window the window manager may size to the screen). An image already in the document's
+ * folder is referred to where it is; one from elsewhere is copied into figures/.
+ */
+async function chooseImageFile() {
+  if (!doc.path || !editable()) return;
+  const folder = dirOf(doc.path);
+  let picked;
+  try { picked = await browser.workspace.pickPath({ mode: "open", title: "Insert image", path: `${folder}/figures`, filter: "images", read: true }); }
+  catch (error) { toast(error.message); return; }
+  if (!picked) return;
+  if (picked.path.startsWith(`${folder}/`)) { await placeFigure(picked.path.slice(folder.length + 1)); return; }
+  const bytes = Uint8Array.from(atob(picked.base64), (c) => c.charCodeAt(0));
+  await uploadImage(new File([bytes], picked.name));
 }
 
 async function uploadImage(file) {

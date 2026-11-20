@@ -4,6 +4,7 @@ import { ensurePaired, host } from "./shared/broker.js";
 import { startGuiBridge } from "./background/gui-bridge.js";
 import { CHAT_SIDE, FILES_SIDE } from "./shared/docks.js";
 import { keyHint } from "./shared/keys.js";
+import { startUpdates } from "./background/updates.js";
 
 const SPACES = [
   { name: "viewer", title: "File viewer (Ctrl+7)", url: "viewer.html", icon: "preview" },
@@ -194,6 +195,7 @@ async function start() {
   await step("legacy tabs", closeLegacyChatTabs);
   await ensurePaired().catch(() => {});
   startGuiBridge({ openSpace, deliver });
+  await step("updates", startUpdates);
 }
 
 void start();

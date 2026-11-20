@@ -2,6 +2,7 @@ import { PAIR_COMMAND, forgetToken, ensurePaired, host, json } from "./shared/br
 import { APPEARANCES, setAppearance } from "./shared/theme.js";
 import { dropdown, h } from "./shared/page.js";
 import { DEFAULT_CODE_THEME } from "./viewer/code-theme.js";
+import { checkForUpdates, installUpdate, skipUpdate } from "./background/updates.js";
 
 const endpoint = document.querySelector("#endpoint");
 const token = document.querySelector("#token");
@@ -153,9 +154,49 @@ document.querySelector("#account-actions").replaceChildren(
   actionButton("Add an address book", "add-addressbook"), actionButton("Encryption keys", "keys"), actionButton("Saved passwords", "passwords"), actionButton("Message filters", "filters"));
 document.querySelector("#advanced-actions").replaceChildren(actionButton("Advanced settings", "advanced"), actionButton("Configuration editor", "config"));
 
-// ---- the section list follows the scroll
+// ---- the section list follows the scroll: the last section whose heading has passed a quarter of
+// the window, or the last one once the page is scrolled to its end.
 const tocLinks = [...document.querySelectorAll("nav.toc a")];
-const spy = new IntersectionObserver((entries) => {
-  for (const entry of entries) if (entry.isIntersecting) for (const link of tocLinks) link.classList.toggle("active", link.getAttribute("href") === `#${entry.target.id}`);
-}, { rootMargin: "-10% 0px -80% 0px" });
-for (const section of document.querySelectorAll("main > section")) spy.observe(section);
+const sections = [...document.querySelectorAll("main > section")];
+function markSection() {
+  const atEnd = scrollY + innerHeight >= document.documentElement.scrollHeight - 4;
+  let current = sections[0];
+  for (const section of sections) if (section.getBoundingClientRect().top <= innerHeight * 0.25) current = section;
+  if (atEnd) current = sections.findLast((section) => section.getBoundingClientRect().top < innerHeight) ?? current;
+  for (const link of tocLinks) link.classList.toggle("active", link.getAttribute("href") === `#${current.id}`);
+}
+addEventListener("scroll", markSection, { passive: true });
+for (const link of tocLinks) link.addEventListener("click", () => setTimeout(() => { for (const l of tocLinks) l.classList.toggle("active", l === link); }, 400));
+markSection();
+
+// ---- updates
+async function renderUpdates(state) {
+  const { updateState, updateAuto = true, updateSkipped = "" } = await browser.storage.local.get({ updateState: null, updateAuto: true, updateSkipped: "" });
+  const s = state ?? updateState;
+  const current = browser.runtime.getManifest().version;
+  const status = document.querySelector("#update-status");
+  const when = s?.checkedAt ? new Date(s.checkedAt).toLocaleString() : null;
+  if (!s) status.textContent = `Thoth ${current}. Not checked yet.`;
+  else if (s.error) status.textContent = `Thoth ${current}. The last check failed (${s.error})${when ? `, ${when}` : ""}.`;
+  else if (s.available) status.textContent = `Thoth ${s.latest.version} is available; you have ${current}.${updateSkipped === s.latest.version ? " (Skipped.)" : ""}`;
+  else status.textContent = `Thoth ${current} is up to date${s.latest ? ` (latest release ${s.latest.version})` : ""}. Checked ${when}.`;
+  document.querySelector("#update-install").hidden = !s?.available;
+  document.querySelector("#update-skip").hidden = !s?.available || updateSkipped === s?.latest?.version;
+  const notes = document.querySelector("#update-notes");
+  notes.hidden = !(s?.available && s.latest.notes);
+  notes.textContent = s?.available ? s.latest.notes : "";
+  document.querySelector("#update-auto").checked = updateAuto;
+}
+document.querySelector("#update-auto").addEventListener("change", (event) => void browser.storage.local.set({ updateAuto: event.target.checked }));
+document.querySelector("#update-check").addEventListener("click", async (event) => {
+  event.target.disabled = true;
+  document.querySelector("#update-status").textContent = "Checking…";
+  try { await renderUpdates(await checkForUpdates({ manual: true })); } finally { event.target.disabled = false; }
+});
+document.querySelector("#update-install").addEventListener("click", async (event) => {
+  event.target.disabled = true;
+  document.querySelector("#update-status").textContent = "Downloading and installing… Thoth restarts its pages when done.";
+  try { await installUpdate(); } catch (error) { document.querySelector("#update-status").textContent = `The update could not be installed: ${error.message}`; event.target.disabled = false; }
+});
+document.querySelector("#update-skip").addEventListener("click", async () => { await skipUpdate(); await renderUpdates(); });
+void renderUpdates();

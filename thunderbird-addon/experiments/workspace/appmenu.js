@@ -66,6 +66,9 @@ function openAppMenu(window, view = "main") {
 
   const views = {
     main: () => [
+      ...(updateOffer ? [item(`Install update ${updateOffer.version}`, { icon: "download", run: done(() => {
+        void installThothUpdate(updateOffer.url).catch((error) => Services.prompt.alert(window, "Thoth update", `The update could not be installed: ${error.message}`));
+      }) }), separator()] : []),
       item("New", { icon: "add", submenu: true, run: go("new") }),
       separator(),
       item("Search messages…", { icon: "search", key: `${mod}Shift+F`, run: done(() => window.searchAllMessages()) }),

@@ -476,7 +476,7 @@
         "name": "pickPath",
         "type": "function",
         "async": true,
-        "description": "The system's file chooser: a folder, a file to open or a file to save. Resolves to the chosen path or null.",
+        "description": "The system's file chooser, over Thunderbird's window: a folder, a file to open or a file to save. Resolves to the chosen path or null; with read, an image file's {path, name, base64}.",
         "parameters": [
           {
             "name": "options",
@@ -499,10 +499,27 @@
               "path": {
                 "type": "string",
                 "optional": true
+              },
+              "filter": {
+                "type": "string",
+                "enum": [
+                  "all",
+                  "images"
+                ],
+                "optional": true
+              },
+              "read": {
+                "type": "boolean",
+                "optional": true
+              },
+              "multiple": {
+                "type": "boolean",
+                "optional": true
               }
             }
           }
-        ]
+        ],
+        "returns": null
       },
       {
         "name": "getSettings",
@@ -556,6 +573,31 @@
               "advanced",
               "config"
             ]
+          }
+        ]
+      },
+      {
+        "name": "setUpdate",
+        "type": "function",
+        "async": true,
+        "description": "The update the menu offers ({version, url}), or null when Thoth is up to date.",
+        "parameters": [
+          {
+            "name": "info",
+            "type": "any",
+            "optional": true
+          }
+        ]
+      },
+      {
+        "name": "installUpdate",
+        "type": "function",
+        "async": true,
+        "description": "Download and install the add-on file at the URL (a Thoth release), replacing the running version.",
+        "parameters": [
+          {
+            "name": "url",
+            "type": "string"
           }
         ]
       }

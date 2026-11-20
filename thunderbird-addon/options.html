@@ -54,6 +54,7 @@
     <a href="#code-section">Code theme</a>
     <a href="#connection-section">Agent connection</a>
     <a href="#keyboard-section">Keyboard</a>
+    <a href="#updates-section">Updates</a>
     <a href="#advanced-section">Advanced</a>
   </nav>
   <section id="appearance-section">
@@ -93,6 +94,13 @@
   <section id="keyboard-section">
     <h2>Keyboard</h2>
     <p><kbd>Ctrl</kbd>+<kbd>5</kbd> chat dock · <kbd>Ctrl</kbd>+<kbd>6</kbd> file dock · <kbd>Ctrl</kbd>+<kbd>7</kbd> Files · <kbd>Ctrl</kbd>+<kbd>8</kbd> Artifacts · <kbd>Ctrl</kbd>+<kbd>9</kbd> Paint · <kbd>Ctrl</kbd>+<kbd>K</kbd> search · <kbd>Ctrl</kbd>+<kbd>`</kbd> terminal</p>
+  </section>
+  <section id="updates-section">
+    <h2>Updates</h2>
+    <p id="update-status">Checking…</p>
+    <div class="setting"><div class="setting-label">Check for updates automatically</div><div class="setting-hint">Once after start and every 6 hours; you are asked before anything is installed.</div><div class="setting-control"><input id="update-auto" class="switch" type="checkbox" role="switch" aria-label="Check for updates automatically"></div></div>
+    <div class="actions"><button id="update-check" class="btn" type="button">Check now</button><button id="update-install" class="btn primary" type="button" hidden>Install update</button><button id="update-skip" class="btn ghost" type="button" hidden>Skip this version</button></div>
+    <pre id="update-notes" hidden></pre>
   </section>
   <section id="advanced-section">
     <h2>Advanced</h2>
