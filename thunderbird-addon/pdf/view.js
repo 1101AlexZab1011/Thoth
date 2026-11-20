@@ -400,7 +400,8 @@ export function createView({ scroll, mount, call, onPage = () => {}, onZoom = ()
   // --------------------------------------------------------------- events --
 
   scroll.addEventListener("scroll", () => { if (tab) { track(); schedule(); } }, { passive: true });
-  new ResizeObserver(() => { if (tab?.view.fit) fit(tab.view.fit); }).observe(scroll);
+  // Resizing keeps the fit and the place in the document (zooming keeps the point in the middle still).
+  new ResizeObserver(() => { if (tab?.view.fit) fit(tab.view.fit, { keep: false }); }).observe(scroll);
   // Ctrl+wheel zooms around the pointer; in single-page mode the wheel turns pages at the ends.
   scroll.addEventListener("wheel", (event) => {
     if (!tab) return;

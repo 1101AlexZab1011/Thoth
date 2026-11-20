@@ -192,3 +192,44 @@ test("pages: move, delete, rotate, insert, duplicate, extract, split, crop, undo
   const { id: saved } = api.open(api.save(id));
   assert.equal(api.info(saved).pages.length, 5);
 });
+
+test("editing: paragraphs are rewritten in place, images moved, replaced, added and deleted", () => {
+  const { id } = api.open(sample(["Hello Thoth PDF and more words here"]));
+  const { text: paragraphs } = api.editBlocks(id, 0);
+  assert.equal(paragraphs.length, 1);
+  const p = paragraphs[0];
+  assert.equal(p.text, "Hello Thoth PDF and more words here");
+  assert.equal(p.size, 18);
+  assert.equal(p.font.family, "sans");
+  api.editText(id, 0, p, { text: "Привет, Thoth ✓ edited" });
+  const after = api.editBlocks(id, 0).text;
+  assert.equal(after.length, 1);
+  assert.equal(after[0].text, "Привет, Thoth ✓ edited", "new text extracts with its Unicode");
+  assert.ok(Math.abs(after[0].lines[0].baseline - p.lines[0].baseline) < 0.5, "on the same baseline");
+  assert.equal(api.search(id, "Hello").length, 0, "the old glyphs are gone");
+  // Long text wraps to the paragraph's width.
+  api.editText(id, 0, after[0], { text: "word ".repeat(60).trim(), size: 12 });
+  const wrapped = api.editBlocks(id, 0).text;
+  assert.ok(wrapped.flatMap((b) => b.lines).length > 1);
+  // A single line may grow to the right margin (as wide as the left one), not beyond.
+  assert.ok(Math.max(...wrapped.map((b) => b.bbox[2])) <= 595 - 72 + 1);
+  api.undo(id);
+  assert.equal(api.editBlocks(id, 0).text[0].text, "Привет, Thoth ✓ edited");
+
+  const png = api.image(id, 0, { scale: 0.05 });
+  api.addImage(id, 0, [100, 300, 200, 400], png);
+  let images = api.editBlocks(id, 0).images;
+  assert.equal(images.length, 1);
+  api.moveImage(id, 0, images[0], [300, 500, 360, 560]);
+  images = api.editBlocks(id, 0).images;
+  assert.equal(images.length, 1);
+  assert.ok(Math.abs(images[0].bbox[0] - 300) < 1 && Math.abs(images[0].bbox[2] - 360) < 1);
+  api.replaceImage(id, 0, images[0], png);
+  assert.equal(api.editBlocks(id, 0).images.length, 1);
+  api.deleteImage(id, 0, api.editBlocks(id, 0).images[0]);
+  assert.equal(api.editBlocks(id, 0).images.length, 0);
+  api.addText(id, 0, [72, 600], { text: "Brand new line", size: 14 });
+  assert.equal(api.search(id, "Brand new line").length, 1);
+  const { id: again } = api.open(api.save(id));
+  assert.match(api.plainText(again)[0].text, /Привет, Thoth ✓ edited/);
+});

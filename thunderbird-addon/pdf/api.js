@@ -5,12 +5,14 @@ import { createEngine } from "./engine.js";
 import { createAnnotations } from "./annotations.js";
 import { createForms } from "./forms.js";
 import { createPages } from "./pages.js";
+import { createEditing } from "./editing.js";
 
 /** @param {typeof import("mupdf")} mupdf */
 export function createApi(mupdf) {
   const engine = createEngine(mupdf);
   const annots = createAnnotations(engine);
   const forms = createForms(engine, mupdf);
+  const editing = createEditing(engine, mupdf);
 
   /** One new document from the pages of several PDFs (`pages`: indexes to take, all by default). */
   function combine(sources) {
@@ -109,6 +111,15 @@ export function createApi(mupdf) {
     pagesExtract: (id, indexes) => pages.extract(id, indexes),
     pagesSplit: (id, options) => pages.split(id, options),
     pagesCrop: (id, indexes, margins) => pages.crop(id, indexes, margins),
+    // editing text and images in place
+    editBlocks: (id, page) => editing.blocks(id, page),
+    editText: (id, page, block, changes) => editing.replaceText(id, page, block, changes),
+    addText: (id, page, point, options) => editing.addText(id, page, point, options),
+    deleteText: (id, page, block) => editing.deleteText(id, page, block),
+    moveImage: (id, page, ref, rect) => editing.moveImage(id, page, ref, rect),
+    deleteImage: (id, page, ref) => editing.deleteImage(id, page, ref),
+    replaceImage: (id, page, ref, bytes) => editing.replaceImage(id, page, ref, bytes),
+    addImage: (id, page, rect, bytes) => editing.addImage(id, page, rect, bytes),
     // new documents
     combine,
     fromImages,
