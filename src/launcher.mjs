@@ -82,6 +82,12 @@ export function userJs(uuid) {
     "app.donation.eoy.version.viewed": 9999,
     "mail.inappnotifications.enabled": false,
     "browser.aboutwelcome.enabled": false,
+    // Thunderbird stays behind Thoth: a profile without accounts is not a "first run", so its
+    // "Welcome to Thunderbird" account hub never opens by itself (FirstRun.sys.mjs, messenger.js).
+    "mail.provider.suppress_dialog_on_startup": true,
+    "mail.accounthub.thundermail.enabled": false,
+    // Thunderbird's own updates install quietly, without "Restart to update Thunderbird" prompts.
+    "app.update.suppressPrompts": true,
     // No data collection for Mozilla.
     "datareporting.policy.dataSubmissionEnabled": false,
     "datareporting.policy.dataSubmissionPolicyBypassNotification": true,
