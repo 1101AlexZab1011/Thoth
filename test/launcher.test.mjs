@@ -46,7 +46,7 @@ test("icons for Windows (.ico) and macOS (.icns) are well formed", async () => {
     assert.equal(count, 7);
     const last = 6 + 16 * (count - 1);
     assert.equal(ico.readUInt32LE(last + 12) + ico.readUInt32LE(last + 8), ico.length);
-    // The taskbar shows an icon of PNG images only as a blank page: bitmaps up to 128 px, PNG at 256.
+    // As Windows' own icons are: bitmaps up to 128 px, PNG at 256.
     for (let i = 0; i < count - 1; i++) {
       const at = ico.readUInt32LE(6 + 16 * i + 12), size = ico[6 + 16 * i];
       assert.equal(ico.readUInt32LE(at), 40, `${size} px is a bitmap`);

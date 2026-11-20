@@ -177,10 +177,7 @@ function dibImage({ width, height, rgba }) {
   return out;
 }
 
-/**
- * A Windows .ico: bitmaps up to 128 px, PNG at 256 px. The taskbar draws an icon of PNG images only
- * as a blank page (Explorer and ExtractIconEx read them), so the small sizes are bitmaps.
- */
+/** A Windows .ico as Windows' own are: bitmaps up to 128 px, PNG at 256 px; every part of the shell reads it. */
 export async function writeIco(file, sizes = [16, 24, 32, 48, 64, 128, 256]) {
   const images = await Promise.all(sizes.map(async (s) => { const data = await readFile(png(s)); return s >= 256 ? data : dibImage(decodePng(data)); }));
   const header = Buffer.alloc(6 + 16 * images.length);
@@ -292,13 +289,22 @@ export function windowsShortcutScript({ thunderbird, profile, ico, links }) {
   ].join("; "))].join("; ");
 }
 
+/** Where Windows keeps Thoth's shortcut icon (see windowsShortcuts). */
+export const windowsIconDir = (env = process.env) => join(env.ProgramData ?? "C:\\ProgramData", "Thoth");
+
 async function windowsShortcuts(thunderbird, profile, base, env) {
-  // The icon's file name carries a hash of its content: Windows caches a shortcut's icon by path, so a
-  // changed icon under the old name could keep showing the old picture (or a blank one).
-  const staging = join(base, "thoth.ico.new");
+  // The icon lives in %ProgramData%\Thoth, which every user may create: the Windows 11 taskbar draws a
+  // shortcut icon kept under the user's profile (%APPDATA%, %LOCALAPPDATA%) as a blank page, the same
+  // file from ProgramData as it is. Its name carries a hash of its content, since Windows caches a
+  // shortcut's icon by path. Without ProgramData it stays beside the profile.
+  let dir = windowsIconDir(env);
+  try { await mkdir(dir, { recursive: true }); } catch { dir = base; }
+  const staging = join(dir, "thoth.ico.new");
   const hash = createHash("sha256").update(await writeIco(staging)).digest("hex").slice(0, 8);
-  const ico = join(base, `thoth-${hash}.ico`);
-  for (const old of await readdir(base)) if (/^thoth(-[0-9a-f]+)?\.ico$/.test(old) && old !== basename(ico)) await rm(join(base, old), { force: true });
+  const ico = join(dir, `thoth-${hash}.ico`);
+  for (const folder of new Set([dir, base])) {
+    for (const old of await readdir(folder).catch(() => [])) if (/^thoth(-[0-9a-f]+)?\.ico$/.test(old) && join(folder, old) !== ico) await rm(join(folder, old), { force: true });
+  }
   await rename(staging, ico);
   const startMenu = join(env.APPDATA ?? join(homedir(), "AppData", "Roaming"), "Microsoft", "Windows", "Start Menu", "Programs", "Thoth.lnk");
   const desktop = join(env.USERPROFILE ?? homedir(), "Desktop", "Thoth.lnk");
@@ -385,6 +391,7 @@ export async function uninstall({ env = process.env, purge = false } = {}) {
   if (isWindows) {
     await drop(join(env.APPDATA ?? join(homedir(), "AppData", "Roaming"), "Microsoft", "Windows", "Start Menu", "Programs", "Thoth.lnk"));
     await drop(join(env.USERPROFILE ?? homedir(), "Desktop", "Thoth.lnk"));
+    await drop(windowsIconDir(env)); // the shortcuts' icon
   } else if (isMac) await drop(join(homedir(), "Applications", "Thoth.app"));
   else {
     const data = env.XDG_DATA_HOME ?? join(homedir(), ".local", "share");
