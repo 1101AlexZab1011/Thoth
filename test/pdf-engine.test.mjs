@@ -230,6 +230,12 @@ test("editing: paragraphs are rewritten in place, images moved, replaced, added 
   assert.equal(api.editBlocks(id, 0).images.length, 0);
   api.addText(id, 0, [72, 600], { text: "Brand new line", size: 14 });
   assert.equal(api.search(id, "Brand new line").length, 1);
+  // Annotations still work on a page after an edit (whose eraser annotation MuPDF deleted itself).
+  api.annotList(id, { pages: [0] });
+  api.editText(id, 0, api.editBlocks(id, 0).text[0], { text: "Привет, Thoth ✓ edited again" });
+  assert.equal(api.redactSearch(id, "again").marked, 1);
+  assert.equal(api.redactMarks(id).length, 1);
+  api.undo(id);
   const { id: again } = api.open(api.save(id));
   assert.match(api.plainText(again)[0].text, /Привет, Thoth ✓ edited/);
 });

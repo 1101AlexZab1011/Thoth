@@ -256,6 +256,11 @@ export function createEditing(engine, mupdf) {
   }
 
   /** Remove text (and/or images) inside a box with a one-off redaction that leaves the rest alone. */
+  /** A change that erases with redaction annotations: the page's cached annotation list is stale after. */
+  function erasing(id, index, label, fn) {
+    try { return change(id, label, fn); } finally { engine.forgetPage(id, index); }
+  }
+
   function erase(page, box, { text = true, images = false } = {}) {
     const annot = page.createAnnotation("Redact");
     annot.setRect(box);
@@ -268,7 +273,7 @@ export function createEditing(engine, mupdf) {
    * by `text`. Optional: size, color, align, lineHeight, width, font: { family, bold, italic }.
    */
   function replaceText(id, index, block, changes = {}) {
-    return change(id, "Edit text", () => {
+    return erasing(id, index, "Edit text", () => {
       const { page, blocks: list } = walk(id, index);
       const b = list[block.id];
       if (!b || (block.bbox && Math.abs(b.bbox[0] - block.bbox[0]) + Math.abs(b.bbox[1] - block.bbox[1]) > 2)) throw new Error("The paragraph changed; pick it again");
@@ -334,7 +339,7 @@ export function createEditing(engine, mupdf) {
 
   /** Move or resize an image to `rect` (page space). */
   function moveImage(id, index, ref, rect) {
-    return change(id, "Move image", () => {
+    return erasing(id, index, "Move image", () => {
       const { page, im } = imageAt(id, index, ref);
       erase(page, shrink(im.bbox), { text: false, images: true });
       overlay(id, index, (device, base) => placeImage(device, base, im.image, im.transform, im.bbox, rect));
@@ -343,7 +348,7 @@ export function createEditing(engine, mupdf) {
   }
 
   function deleteImage(id, index, ref) {
-    return change(id, "Delete image", () => {
+    return erasing(id, index, "Delete image", () => {
       const { page, im } = imageAt(id, index, ref);
       erase(page, shrink(im.bbox), { text: false, images: true });
       return { page: index };
@@ -352,7 +357,7 @@ export function createEditing(engine, mupdf) {
 
   /** Put another picture where an image is, fitted into its box (keeping the new picture's shape). */
   function replaceImage(id, index, ref, bytes) {
-    return change(id, "Replace image", () => {
+    return erasing(id, index, "Replace image", () => {
       const { page, im } = imageAt(id, index, ref);
       erase(page, shrink(im.bbox), { text: false, images: true });
       const image = new mupdf.Image(bytes);

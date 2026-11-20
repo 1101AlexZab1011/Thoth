@@ -34,6 +34,17 @@ export function createEngine(mupdf) {
     e.pages.clear();
     e.version++;
   }
+  /**
+   * Drop one cached page. mupdf.js keeps a page's annotations in a list of its own, which goes stale
+   * when MuPDF deletes one itself (applying a redaction annotation does).
+   */
+  function forgetPage(id, index) {
+    const e = entry(id);
+    const page = e.pages.get(index);
+    if (!page) return;
+    try { page.destroy(); } catch { /* gone */ }
+    e.pages.delete(index);
+  }
   function adopt(doc) {
     const id = nextId++;
     docs.set(id, { doc, pages: new Map(), version: 0 });
@@ -325,7 +336,7 @@ export function createEngine(mupdf) {
 
   return {
     mupdf, docs, open, create, close, change, undo, redo, info, outline, render, image, text, plainText, search, links, select,
-    save, setMeta, pageOf, docOf, entry, forget, adopt, permissionBits,
+    save, setMeta, pageOf, docOf, entry, forget, forgetPage, adopt, permissionBits,
   };
 }
 

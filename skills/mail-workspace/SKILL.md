@@ -149,7 +149,7 @@ as `~/.ssh` are refused):
 
 ## Editors: tabs and saving
 
-Writer, Slides, Draw and Paint keep every open file in a tab, the way VS Code does. A dot on a tab marks
+Writer, Slides, Draw, PDF and Paint keep every open file in a tab, the way VS Code does. A dot on a tab marks
 unsaved changes, and nothing saves on its own: the user saves with Ctrl+S, and unsaved changes survive
 a reload as drafts.
 
@@ -159,7 +159,7 @@ a reload as drafts.
   and never save over their work unasked.
 - `*_state` lists the open tabs and which are modified.
 - Switching from the File viewer to an editor opens the viewed file there (images in Paint, decks in
-  Slides, SVG in Draw, .qmd/.md in Writer, pages of the notes vault in Notes).
+  Slides, SVG in Draw, PDFs in PDF, .qmd/.md in Writer, pages of the notes vault in Notes).
 - Notes is the exception: it saves as the user types, so your edits to a page land at once.
 
 ## Writer (papers in Quarto)
@@ -304,6 +304,42 @@ operations; export to PDF and PNG. You work through the `draw_*` tools:
 - **Point at things** with `draw_select` before a change the user should confirm.
 - `draw_export` writes a vector PDF (or a PNG at a chosen dpi) next to the drawing.
 - `draw_new` makes a new drawing (A0 to A4 or 16:9) with one Inkscape layer.
+
+## PDF (an editor like Acrobat)
+
+The PDF space edits PDF files in place, the way Acrobat does: it opens from the Create group,
+Ctrl+Shift+0, or by opening any .pdf (Files' "Open in viewer" still shows the plain viewer). Its
+ribbon has Home, Comment, Fill & Sign, Pages, Edit, Protect, Tools and View; File holds Create New
+(combine files, from a Word file or images), Open Recent, Save As, Download As and Print.
+
+Edits stay in the open document, with undo, until it is saved: the tab gets a dot, and `pdf_save`
+(or the user's Ctrl+S) writes them. Pages count from 1; positions are PDF points (1/72 in) from the
+page's top-left corner, as the page is shown.
+
+- **Start with `pdf_state`.** "This PDF", "this page" and "the selected text" refer to it.
+- **Read with `pdf_read`** (unsaved edits included). `layout: true` gives each line's box, font and
+  size, to place things precisely. `pdf_find` gives each hit's page, box and line. A page without
+  text is a scan: look at it with `pdf_shot`, and `pdf_tools` ocr makes it searchable when Tesseract
+  is installed.
+- **Comment with `pdf_annotate`:** highlight, underline, strike out or squiggle a passage by its exact
+  text (with a note in `comment`), or put a sticky note, text box, shape, arrow or stamp at a point,
+  a box or next to some text. It is signed with the user's name. `pdf_comments` lists the threads and
+  replies, resolves, edits or (when asked) deletes them.
+- **Forms with `pdf_fill`:** without values it lists the fields; with values it fills them by name.
+  Flatten only when the user asks. `pdf_sign` places the user's saved signature only when they ask
+  you to sign.
+- **Pages with `pdf_pages`:** move, delete, rotate, insert blank pages or other files, duplicate,
+  crop, extract or split (new files next to the document).
+- **Edit the text itself with `pdf_edit_text`:** replace words inside a paragraph (it is redrawn in
+  its own font, size and colour) or add new text. Prefer comments when the user should decide.
+- **Redact with `pdf_redact`:** mark text or areas, show the user, then `apply: true` removes what is
+  under the marks for real; after saving it cannot be undone. Only redact what the user asked for.
+- **Protect with `pdf_protect`** (passwords and permissions, applied on save; or sanitize), only with
+  passwords the user gave you. Never put a password in a file or a message.
+- **`pdf_tools`:** ocr, compress, export (Word, Excel, page images, text next to the document) and
+  compare with another version (shown to the user as marks and a list).
+- `pdf_properties` reads or sets title, author, subject and keywords; `pdf_view` moves the view for
+  the user (page, zoom, panel, ribbon tab).
 
 ## Notes (a Notion-like notebook)
 

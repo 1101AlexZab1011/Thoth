@@ -388,6 +388,161 @@ register("writer_view", "The Writer's window for the user, laid out as ONLYOFFIC
   tab: z.enum(["File", "Home", "Insert", "Layout", "References", "Collaboration", "View"]).optional(),
 }, async (args) => text(await gui("page", { page: "writer", type: "view", ...args })));
 
+// ---------------------------------------------------------------- pdf --
+// The PDF space edits PDF files in place, as Acrobat does (MuPDF in the page). Edits stay in the open
+// document until pdf_save; the user can undo them. Pages count from 1; positions are PDF points
+// (1/72 in) from the page's top-left corner, as the page is shown.
+
+const pdfPage = (type, args = {}, options) => gui("page", { page: "pdf", type, ...args }, options);
+const pdfPages = z.array(z.number().int().min(1)).optional().describe("Pages, counted from 1; default all");
+const pdfRect = z.array(z.number()).length(4).describe("[x0, y0, x1, y1] in points from the page's top-left corner");
+
+register("pdf_state", "The PDF space: the open document (path, unsaved edits, page, page count, zoom), its tabs, the selected text, the tool and ribbon tab, whether it is encrypted and what its permissions allow. Use it to resolve \"this PDF\", \"this page\" or \"the selected text\".", {}, async () => text(await pdfPage("state")), { readOnlyHint: true });
+
+register("pdf_open", "Open a PDF in the PDF space (other files go to the viewer). With `files` and no `path`, create a new PDF combining them (PDFs and images, in order); with neither, a blank page. A protected file asks the user for its password.", {
+  path: z.string().optional(),
+  files: z.array(z.string()).optional().describe("PDFs and images to combine into a new document"),
+  title: z.string().optional().describe("Name of a new document, e.g. \"Combined.pdf\""),
+}, async ({ path, files, title }) => text(path ? await pdfPage("open", { path }) : await pdfPage("create", { files, title })));
+
+register("pdf_read", "The open PDF's text, unsaved edits included, with its properties (title, author…), page count and permissions. `layout` gives each line with its box, font and size instead (to place comments, edits or signatures precisely). Scanned pages have no text until pdf_tools ocr.", {
+  pages: pdfPages,
+  layout: z.boolean().optional(),
+}, async (args) => text(await pdfPage("read", args)), { readOnlyHint: true });
+
+register("pdf_find", "Find text in the open PDF: each hit's page, box and line. Case-insensitive unless matchCase.", {
+  text: z.string(),
+  matchCase: z.boolean().optional(),
+  pages: pdfPages,
+}, async (args) => text(await pdfPage("find", args)), { readOnlyHint: true });
+
+register("pdf_shot", "A picture of a page of the open PDF as it is now (annotations and unsaved edits included). Use it to look at scans, figures and layout, and to check your edits.", {
+  page: z.number().int().min(1).optional().describe("Default: the page shown"),
+  scale: z.number().min(0.3).max(4).optional().describe("Pixels per point (default 1.5)"),
+}, async (args) => { const shot = await pdfPage("shot", args); return imageResult(shot.path, `page ${shot.page}`); }, { readOnlyHint: true });
+
+register("pdf_view", "Move the PDF space for the user: go to a page, zoom (0.1–8) or fit (width, page), page layout (continuous, single, two), a ribbon tab (Home, Comment, Fill & Sign, Pages, Edit, Protect, Tools, View), the left panel (thumbnails, bookmarks, search, comments; empty string closes it) or a tool (select, hand).", {
+  page: z.number().int().min(1).optional(),
+  zoom: z.number().min(0.1).max(8).optional(),
+  fit: z.enum(["width", "page"]).optional(),
+  mode: z.enum(["continuous", "single", "two"]).optional(),
+  ribbon: z.string().optional(),
+  panel: z.string().optional(),
+  tool: z.string().optional(),
+}, async (args) => text(await pdfPage("view", args)));
+
+register("pdf_annotate", "Comment on the open PDF as Acrobat's Comment tools do, in the user's name unless `author` is given. Text markup (highlight, underline, strikeout, squiggly) marks every occurrence of `text`, or the `occurrence`-th (1-based), on `page`/`pages`; `comment` becomes its note. A note (sticky note), textbox (text written on the page; `comment` is its text), rect, ellipse, arrow, line or stamp goes at `rect`, at `point`, or next to `text`; ink takes strokes. Colours #RRGGBB.", {
+  type: z.enum(["highlight", "underline", "strikeout", "squiggly", "note", "textbox", "rect", "ellipse", "line", "arrow", "ink", "stamp"]),
+  text: z.string().optional().describe("Exact text on the page to mark, or to place the annotation next to"),
+  occurrence: z.number().int().min(1).optional(),
+  page: z.number().int().min(1).optional(),
+  pages: pdfPages,
+  rect: pdfRect.optional(),
+  point: z.array(z.number()).length(2).optional(),
+  line: z.array(z.array(z.number()).length(2)).length(2).optional().describe("[[x, y], [x, y]] for line and arrow"),
+  ink: z.array(z.array(z.array(z.number()).length(2))).optional().describe("Strokes, each a list of [x, y]"),
+  comment: z.string().optional().describe("The note's text (for stamp: its name, e.g. Approved, Draft, Confidential)"),
+  color: z.string().optional(),
+  opacity: z.number().min(0.05).max(1).optional(),
+  width: z.number().min(0.25).max(20).optional(),
+  fontSize: z.number().min(4).max(72).optional(),
+  author: z.string().optional(),
+}, async (args) => text(await pdfPage("annotate", args)));
+
+register("pdf_comments", "The open PDF's comments and markup as threads (ref, type, page, author, text, the marked text, replies, status). With `action` and `ref`: reply (text), edit (text), resolve, accept, reject, cancel or delete; delete only when the user asks.", {
+  action: z.enum(["reply", "edit", "resolve", "accept", "reject", "cancel", "delete"]).optional(),
+  ref: z.number().int().optional(),
+  text: z.string().optional(),
+  author: z.string().optional(),
+}, async ({ action, ...args }) => text(action ? await pdfPage("comment", { action, ...args }) : await pdfPage("comments")));
+
+register("pdf_fill", "The open PDF's form fields (name, type, value, options, page), or with `values` fill them by name: text fields take strings, checkboxes true/false, radio buttons and lists one of their options. `flatten` then bakes fields and comments into the page so they can no longer change; only when the user asks.", {
+  values: z.record(z.string(), z.union([z.string(), z.boolean(), z.number(), z.array(z.string())])).optional(),
+  flatten: z.boolean().optional(),
+}, async ({ values, flatten }) => text(values || flatten ? await pdfPage("fill", { values, flatten }) : await pdfPage("fields")));
+
+register("pdf_sign", "Place the user's saved signature (made in Fill & Sign → Sign) or a signature image on the open PDF, at `rect` or just after `text` (e.g. \"Signature:\"). Sign only when the user asks you to.", {
+  image: z.string().optional().describe("A PNG or JPEG of a signature; default the user's saved one"),
+  page: z.number().int().min(1).optional(),
+  rect: pdfRect.optional(),
+  text: z.string().optional(),
+}, async (args) => text(await pdfPage("sign", args)));
+
+register("pdf_pages", "Organise the open PDF's pages: move (pages → before page `to`), delete, rotate (degrees 90, 180, 270), insert-blank (before `to`, default at the end), insert (PDFs and images from `files`, before `to`), duplicate, crop (margins in points: {top, right, bottom, left}), extract (the pages into a new file next to it) or split (every N pages, or at the pages in `at`, into files next to it).", {
+  action: z.enum(["move", "delete", "rotate", "insert-blank", "insert", "duplicate", "crop", "extract", "split"]),
+  pages: pdfPages,
+  to: z.number().int().min(1).optional(),
+  degrees: z.number().int().optional(),
+  files: z.array(z.string()).optional(),
+  margins: z.object({ top: z.number().optional(), right: z.number().optional(), bottom: z.number().optional(), left: z.number().optional() }).optional(),
+  every: z.number().int().min(1).optional(),
+  at: z.array(z.number().int().min(1)).optional(),
+}, async (args) => text(await pdfPage("pages", args)));
+
+register("pdf_edit_text", "Edit the open PDF's own text in place, as Acrobat's Edit PDF does: replace `find` with `replace` inside the paragraph that contains it (the paragraph is redrawn in its font, size, colour and alignment; `all` changes every paragraph). Or add new text at `point` with `add`. `blocks` lists a page's editable paragraphs and images.", {
+  find: z.string().optional(),
+  replace: z.string().optional(),
+  all: z.boolean().optional(),
+  page: z.number().int().min(1).optional(),
+  add: z.string().optional().describe("New text to write at `point`"),
+  point: z.array(z.number()).length(2).optional(),
+  size: z.number().min(4).max(96).optional(),
+  color: z.string().optional(),
+  font: z.enum(["sans", "serif", "mono"]).optional(),
+  bold: z.boolean().optional(),
+  italic: z.boolean().optional(),
+  blocks: z.boolean().optional(),
+}, async ({ find, replace, all, page, add, point, size, color, font, bold, italic, blocks }) => {
+  if (blocks) return text(await pdfPage("editBlocks", { page: page ?? 1 }));
+  if (add !== undefined) return text(await pdfPage("addText", { page, point: point ?? [72, 72], text: add, size, color, font, bold, italic }));
+  if (find === undefined || replace === undefined) throw new Error("Give find and replace, add and point, or blocks");
+  return text(await pdfPage("editText", { find, replace, all, page }));
+});
+
+register("pdf_redact", "Redact the open PDF for real: mark every occurrence of `text`, or an area (`page` and `rect`), then with `apply` remove what is under the marks (text, image parts, drawings) and leave black boxes; pdf_save writes it to the file and it cannot be undone after. Apply only when the user asked for the redaction.", {
+  text: z.string().optional(),
+  matchCase: z.boolean().optional(),
+  page: z.number().int().min(1).optional(),
+  rect: pdfRect.optional(),
+  apply: z.boolean().optional(),
+}, async (args) => text(await pdfPage("redact", args)));
+
+register("pdf_protect", "Protect the open PDF when it is next saved: encrypt with an open password and/or a permissions password and the permissions readers keep (AES-256 by default); remove (with the permissions password if it has restrictions); or sanitize (remove metadata, scripts and attachments, and comments or links if asked). Only with passwords the user gave you.", {
+  action: z.enum(["encrypt", "remove", "sanitize"]).default("encrypt"),
+  userPassword: z.string().optional(),
+  ownerPassword: z.string().optional(),
+  permissions: z.object({ print: z.boolean().optional(), copy: z.boolean().optional(), edit: z.boolean().optional(), annotate: z.boolean().optional(), form: z.boolean().optional(), assemble: z.boolean().optional() }).optional(),
+  method: z.enum(["aes-256", "aes-128", "rc4-128"]).optional(),
+  sanitize: z.object({ metadata: z.boolean().optional(), javascript: z.boolean().optional(), attachments: z.boolean().optional(), comments: z.boolean().optional(), links: z.boolean().optional() }).optional(),
+}, async (args) => text(await pdfPage("protect", args)));
+
+register("pdf_properties", "The open PDF's properties (title, author, subject, keywords, creator, producer, dates, PDF version, encryption); `set` changes title, author, subject or keywords.", {
+  set: z.object({ title: z.string().optional(), author: z.string().optional(), subject: z.string().optional(), keywords: z.string().optional() }).optional(),
+}, async (args) => text(await pdfPage("meta", args)));
+
+register("pdf_tools", "Acrobat's tools on the open PDF: ocr (make scanned pages searchable with Tesseract; `language` as Tesseract names it, e.g. eng, deu, eng+deu; pages scans|all|current), compress (images to `dpi` and JPEG `quality`), export (format docx, xlsx, png, jpeg or txt, written next to the document), compare (with the other version at `path`: the words and areas that differ, also shown to the user).", {
+  action: z.enum(["ocr", "compress", "export", "compare"]),
+  language: z.string().optional(),
+  pages: z.enum(["scans", "all", "current"]).optional(),
+  dpi: z.number().int().min(50).max(600).optional(),
+  quality: z.number().int().min(10).max(100).optional(),
+  format: z.enum(["docx", "xlsx", "png", "jpeg", "txt"]).optional(),
+  path: z.string().optional(),
+}, async ({ action, language, pages, dpi, quality, format, path }) => {
+  if (action === "ocr") return text(await pdfPage("ocr", { language, pages, dpi }, { timeoutMs: 1_800_000 }));
+  if (action === "compress") return text(await pdfPage("compress", { dpi, quality }, { timeoutMs: 600_000 }));
+  if (action === "export") return text(await pdfPage("exportAs", { format: format ?? "docx" }, { timeoutMs: 600_000 }));
+  return text(await pdfPage("compare", { path }, { timeoutMs: 600_000 }));
+});
+
+register("pdf_save", "Save the open PDF (comments, form values, page changes, edits, redactions and protection go into the file), or with `path` save a copy there and keep working on it. `undo` takes back that many of the last changes instead of saving, as Ctrl+Z.", {
+  path: z.string().optional(),
+  undo: z.number().int().min(1).max(50).optional(),
+}, async ({ path, undo }) => {
+  if (undo) return text(await pdfPage("undo", { steps: undo }));
+  return text(path ? await pdfPage("saveAs", { path }) : await pdfPage("save"));
+});
+
 // ------------------------------------------------------------- slides --
 // Slides edits presentations (.slides.json, PPTist's model; media in media/ next to the deck).
 // The open deck is edited through the page, so each change is one undo step for the user; other

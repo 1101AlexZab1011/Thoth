@@ -40,11 +40,14 @@ Optional programs, each used for one part of the workspace:
 | LibreOffice | viewing Word and PowerPoint files | package manager | `brew install --cask libreoffice` | `winget install TheDocumentFoundation.LibreOffice` |
 | Inkscape | Draw: path operations, PDF and PNG export | package manager | `brew install --cask inkscape` | `winget install Inkscape.Inkscape` |
 | Quarto | Writer: rendering documents | package manager | `brew install --cask quarto` | `winget install Posit.Quarto` |
+| Tesseract | PDF: recognizing text in scans (OCR) | `tesseract-ocr` and `tesseract-ocr-<language>` | `brew install tesseract tesseract-lang` | `winget install UB-Mannheim.TesseractOCR` |
 | LanguageTool (Java) | Writer: grammar checks | package manager | `brew install languagetool` | unpack the download, set `LANGUAGETOOL_HOME` |
 
 They are found on `PATH` or where their installers put them (the app bundle on
 macOS, Program Files on Windows). `MAIL_WORKSPACE_INKSCAPE`,
-`MAIL_WORKSPACE_SOFFICE` and `QUARTO` point at a program anywhere else.
+`MAIL_WORKSPACE_SOFFICE`, `MAIL_WORKSPACE_TESSERACT` and `QUARTO` point at a
+program anywhere else. LibreOffice also lets the PDF space create a PDF from a
+Word file.
 
 On Windows, run the commands below in PowerShell (or Git Bash), in a normal
 terminal window. Not in a terminal that runs inside a packaged (MSIX) app,
@@ -244,6 +247,27 @@ that turns Thunderbird into a workspace built around your agent.
     is written the Pandoc way (`[text]{.underline}`,
     `[text]{style="color: #C00000"}`, `::: {style="text-align: center"}`),
     which the exports honour; untouched paragraphs are saved byte for byte.
+- **PDF space.** A PDF editor like Acrobat, on MuPDF, laid out as the Writer
+  is; .pdf files open in it (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>0</kbd>).
+  Edits stay in the document, with undo, until you save.
+  - **File:** create a PDF from a blank page, by combining files, from a Word
+    file or from images; open, recent files, Save As, Download As (PDF, Word,
+    Excel, PNG, JPEG, text), print and the document's properties.
+  - **Home and View:** zoom and fit, one or two pages, rotation, thumbnails,
+    bookmarks and search with results in context.
+  - **Comment:** sticky notes, text boxes, highlight, underline, strike-out,
+    drawing, shapes, arrows and stamps, with replies and status in a
+    comments panel.
+  - **Fill & Sign:** form fields filled in place, ticks, crosses, dates, and
+    a signature typed, drawn or from an image; flatten.
+  - **Pages:** reorder by dragging thumbnails, insert pages or files, delete,
+    rotate, duplicate, crop, extract and split.
+  - **Edit:** change the document's own text and images in place, keeping
+    the paragraph's font, size and colour; add text and images.
+  - **Protect:** true redaction (what is under the marks is removed from the
+    file), passwords and permissions (AES-256), sanitizing.
+  - **Tools:** recognize text in scans (Tesseract), compress, export to Word
+    and Excel, and compare two versions.
 - **Terminal.** <kbd>Ctrl</kbd>+<kbd>`</kbd> slides a terminal up over the
   window, with tabs and horizontal or vertical splits. The agent can open
   terminals and run commands in them; you see everything it types.
@@ -262,7 +286,7 @@ Parts:
 |------|------------|
 | `thunderbird-addon/` | The add-on: an Experiment API for the layout, theme and automation, plus the pages for chat, files, viewer, artifacts and paint |
 | `src/workspace/`, `src/workspace-main.mjs` | Workspace host on `127.0.0.1:47810`: files, conversions, highlighting, artifacts, grants and terminals |
-| `src/gui-main.mjs` | `mail-gui` MCP server: GUI, viewer, files, paint, artifact, settings and terminal tools |
+| `src/gui-main.mjs` | `mail-gui` MCP server: GUI, viewer, files, paint, artifact, PDF, settings and terminal tools |
 | [listener-mcp](https://github.com/1101AlexZab1011/listener-mcp) | Local broker the add-on and agents talk through (chat on `mail/chat/*`, GUI commands on `mail/gui/commands`) |
 
 Set it up on each machine:
