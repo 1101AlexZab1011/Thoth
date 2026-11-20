@@ -1,0 +1,210 @@
+/* Tasks in the Mail Workspace design (experiments/workspace/tasks.js draws them): the workspace's
+   tokens, pills, cards and section heads, like the calendar and the other spaces. */
+
+/* Thunderbird's own task tree, entry field and filter radios give way to ours. */
+#calendarTabPanel[mw-tasks] #calendar-task-box > :not(#mw-tasks) { display: none !important; }
+#calendarTabPanel[mw-tasks] #task-tree-filtergroup { display: none !important; }
+#calendarTabPanel[mw-tasks] #mw-cal-tags { display: none !important; }
+#calendarTabPanel:not([mw-tasks]) #mw-task-filters, #calendarTabPanel:not([mw-tasks]) #mw-tasks { display: none; }
+#calendarTabPanel[mw-tasks] #calendar-task-box { background: var(--mw-bg) !important; }
+#calendarTabPanel[mw-calendar] #task-tree-filter-header { font: 650 11.5px var(--mw-font) !important; letter-spacing: 0.06em; text-transform: uppercase; color: var(--mw-text-3) !important; padding: 10px 8px 6px !important; background: none !important; }
+#calendarTabPanel[mw-calendar] #task-filter-pane #toggleCalendarIcon { display: none; }
+
+/* Icons from the workspace's set, drawn in the current colour. */
+.mw-t-ico { display: inline-block; width: 18px; height: 18px; flex: none; background: currentColor; mask: center / 18px no-repeat; }
+.mw-i-checklist { mask-image: url("resource://mailworkspace/icons/checklist.svg"); }
+.mw-i-today { mask-image: url("resource://mailworkspace/icons/today.svg"); }
+.mw-i-date_range { mask-image: url("resource://mailworkspace/icons/date_range.svg"); }
+.mw-i-play_arrow { mask-image: url("resource://mailworkspace/icons/play_arrow.svg"); }
+.mw-i-warning { mask-image: url("resource://mailworkspace/icons/warning.svg"); }
+.mw-i-task_alt { mask-image: url("resource://mailworkspace/icons/task_alt.svg"); }
+.mw-i-flag { mask-image: url("resource://mailworkspace/icons/flag.svg"); }
+.mw-i-event { mask-image: url("resource://mailworkspace/icons/event.svg"); }
+.mw-i-account_tree { mask-image: url("resource://mailworkspace/icons/account_tree.svg"); }
+.mw-i-sell { mask-image: url("resource://mailworkspace/icons/sell.svg"); }
+.mw-i-calendar_month { mask-image: url("resource://mailworkspace/icons/calendar_month.svg"); }
+.mw-i-search { mask-image: url("resource://mailworkspace/icons/search.svg"); }
+.mw-i-sort { mask-image: url("resource://mailworkspace/icons/sort.svg"); }
+.mw-i-add { mask-image: url("resource://mailworkspace/icons/add.svg"); }
+
+/* --- Filter Tasks (left) -------------------------------------------------------------------- */
+#mw-task-filters { display: grid; gap: 1px; padding: 0 0 8px; }
+.mw-f-item {
+  display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 10px; border: 0; border-radius: var(--mw-radius-s);
+  background: none; color: var(--mw-text); font: 13.5px var(--mw-font); cursor: pointer; text-align: start;
+}
+.mw-f-item .mw-t-ico { color: var(--mw-text-2); }
+.mw-f-item:hover { background: var(--mw-hover); }
+.mw-f-item.active { background: var(--mw-primary-soft); color: var(--mw-primary-soft-text); font-weight: 600; }
+.mw-f-item.active .mw-t-ico { color: var(--mw-primary-soft-text); }
+.mw-f-label { flex: 1; }
+.mw-f-count { font-size: 12px; color: var(--mw-text-3); }
+.mw-f-overdue .mw-t-ico, .mw-f-overdue .mw-f-count { color: var(--mw-danger); }
+.mw-f-completed .mw-t-ico { color: var(--mw-success); }
+
+/* --- the page ------------------------------------------------------------------------------- */
+#mw-tasks { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 12px 12px 12px 2px; font: 13.5px var(--mw-font); color: var(--mw-text); }
+.mw-t-head { display: flex; align-items: center; gap: 16px; padding: 0 2px 12px; }
+.mw-t-head h1 { margin: 0; font: 650 20px var(--mw-font); color: var(--mw-text); }
+.mw-t-spacer { flex: 1; }
+.mw-seg { display: inline-flex; gap: 2px; padding: 3px; border-radius: var(--mw-radius-pill); background: var(--mw-surface-2); }
+.mw-seg-item {
+  display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 14px; border: 0; border-radius: var(--mw-radius-pill);
+  background: none; color: var(--mw-text-2); font: 560 13px var(--mw-font); cursor: pointer;
+}
+.mw-seg-item .mw-t-ico { width: 16px; height: 16px; mask-size: 16px; }
+.mw-seg-item:hover { color: var(--mw-text); background: var(--mw-hover); }
+.mw-seg-item[aria-pressed="true"] { background: var(--mw-surface); color: var(--mw-primary-soft-text); box-shadow: var(--mw-shadow-1); }
+.mw-t-search {
+  display: flex; align-items: center; gap: 8px; width: min(340px, 36vw); height: 36px; padding: 0 12px; border: 1px solid var(--mw-border);
+  border-radius: var(--mw-radius-pill); background: var(--mw-surface); color: var(--mw-text-3);
+}
+.mw-t-search:focus-within { border-color: var(--mw-primary); box-shadow: var(--mw-focus); }
+.mw-t-search-input { flex: 1; min-width: 0; border: 0; outline: none; background: none; font: 13.5px var(--mw-font); color: var(--mw-text); }
+.mw-t-search kbd { font: 11px var(--mw-font-mono); color: var(--mw-text-3); }
+.mw-t-bar { display: flex; align-items: center; gap: 12px; padding: 0 2px 12px; }
+.mw-t-btn {
+  display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 16px; border: 1px solid var(--mw-border-strong); border-radius: var(--mw-radius-pill);
+  background: var(--mw-surface); color: var(--mw-text); font: 560 13.5px var(--mw-font); cursor: pointer;
+}
+.mw-t-btn:hover { background: var(--mw-surface-2); }
+.mw-t-btn.primary { border-color: transparent; background: var(--mw-primary); color: var(--mw-on-primary); }
+.mw-t-btn.primary:hover { background: var(--mw-primary-hover); }
+.mw-t-btn.ghost { border-color: transparent; background: none; color: var(--mw-text-2); }
+.mw-t-btn.ghost:hover { background: var(--mw-hover); color: var(--mw-text); }
+.mw-t-split { display: inline-flex; }
+.mw-t-split .mw-t-btn:first-child { border-radius: var(--mw-radius-pill) 0 0 var(--mw-radius-pill); }
+.mw-t-split .caret {
+  width: 36px; padding: 0; border-radius: 0 var(--mw-radius-pill) var(--mw-radius-pill) 0; border-inline-start: 1px solid color-mix(in srgb, var(--mw-on-primary) 30%, transparent);
+  background: var(--mw-primary) url("resource://mailworkspace/icons/keyboard_arrow_down.svg") 45% center / 18px no-repeat; -moz-context-properties: fill; fill: var(--mw-on-primary);
+}
+.mw-t-body { flex: 1; min-height: 0; display: flex; gap: 12px; }
+.mw-t-list { flex: 1; min-width: 0; overflow: auto; display: grid; align-content: start; gap: 10px; padding-bottom: 12px; }
+
+/* Groups and rows */
+.mw-t-group, .mw-p-group { background: var(--mw-surface); border: 1px solid var(--mw-border); border-radius: var(--mw-radius-l); box-shadow: var(--mw-shadow-1); overflow: hidden; }
+.mw-t-group-head, .mw-p-group-head {
+  display: flex; align-items: center; gap: 8px; width: 100%; min-height: 42px; padding: 0 14px; border: 0; background: none; cursor: pointer;
+  font: 13.5px var(--mw-font); color: var(--mw-text); text-align: start;
+}
+.mw-t-group-head:hover, .mw-p-group-head:hover { background: var(--mw-hover); }
+.mw-t-caret { width: 16px; height: 16px; background: var(--mw-text-2); mask: url("resource://mailworkspace/icons/keyboard_arrow_down.svg") center / 18px no-repeat; transition: transform var(--mw-fast) var(--mw-ease); }
+.closed .mw-t-caret { transform: rotate(-90deg); }
+.mw-t-group-name { font-weight: 650; }
+.mw-t-group-note { color: var(--mw-text-2); }
+.mw-t-count { margin-inline-start: 2px; min-width: 20px; height: 20px; padding: 0 6px; display: inline-grid; place-items: center; border-radius: var(--mw-radius-pill); background: var(--mw-surface-2); color: var(--mw-text-2); font: 600 11.5px var(--mw-font); }
+.mw-t-group-overdue .mw-t-group-name { color: var(--mw-danger); }
+.mw-t-group-overdue .mw-t-group-head { background: color-mix(in srgb, var(--mw-danger-soft) 70%, transparent); }
+.mw-t-group-completed .mw-t-group-name { color: var(--mw-success); }
+.mw-t-rows { list-style: none; margin: 0; padding: 0 6px 6px; display: grid; gap: 1px; }
+.mw-t-row {
+  display: flex; align-items: center; gap: 12px; min-height: 42px; padding: 4px 6px 4px 10px;
+  border-radius: var(--mw-radius); cursor: pointer;
+}
+.mw-t-row .mw-t-title { flex: 1 1 auto; min-width: 80px; }
+.mw-t-row .mw-t-chips { flex: 0 1 auto; min-width: 0; max-width: 62%; flex-wrap: nowrap; overflow: hidden; justify-content: flex-end; }
+.mw-t-row .mw-t-chip { flex: none; }
+.mw-t-row:hover { background: var(--mw-hover); }
+.mw-t-row.selected { background: var(--mw-primary-soft); }
+.mw-t-row.overdue { box-shadow: inset 3px 0 0 var(--mw-danger); }
+.mw-t-check { width: 18px; height: 18px; margin: 0; accent-color: var(--mw-primary); cursor: pointer; }
+.mw-t-title { font-weight: 560; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mw-t-row.done .mw-t-title { color: var(--mw-text-3); text-decoration: line-through; font-weight: 400; }
+.mw-t-chips { display: inline-flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+.mw-t-chip {
+  display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 10px; border-radius: var(--mw-radius-pill);
+  background: var(--mw-surface-2); color: var(--mw-text-2); font: 560 12px var(--mw-font); white-space: nowrap; max-width: 220px; overflow: hidden; text-overflow: ellipsis;
+}
+.mw-t-chip .mw-t-ico { width: 14px; height: 14px; mask-size: 14px; }
+.mw-t-chip-prio-high { background: var(--mw-danger-soft); color: var(--mw-danger); }
+.mw-t-chip-prio-medium { background: var(--mw-warning-soft); color: var(--mw-warning); }
+.mw-t-chip-prio-low { background: var(--mw-surface-2); color: var(--mw-text-2); }
+.mw-t-chip-due.overdue { background: var(--mw-danger-soft); color: var(--mw-danger); }
+.mw-t-chip-tag { background: color-mix(in srgb, var(--tag) 16%, var(--mw-surface)); color: color-mix(in srgb, var(--tag) 45%, var(--mw-text)); }
+.mw-t-chip-plan { background: var(--mw-primary-soft); color: var(--mw-primary-soft-text); }
+.mw-t-more {
+  width: 30px; height: 30px; border: 0; border-radius: var(--mw-radius-pill); cursor: pointer; opacity: 0.6;
+  background: transparent url("resource://mailworkspace/icons/more_horiz.svg") center / 20px no-repeat; -moz-context-properties: fill; fill: var(--mw-text-2);
+}
+.mw-t-row:hover .mw-t-more, .mw-t-more:hover { opacity: 1; }
+.mw-t-more:hover { background-color: var(--mw-hover); }
+.mw-t-empty { display: grid; justify-items: center; gap: 12px; padding: 48px 24px; text-align: center; color: var(--mw-text-2); background: var(--mw-surface); border: 1px solid var(--mw-border); border-radius: var(--mw-radius-l); }
+.mw-t-empty p { margin: 0; max-width: 420px; }
+
+/* Plans */
+.mw-p-group-head .mw-p-progress { margin-inline-start: auto; }
+.mw-p-folder { width: 18px; height: 18px; background: var(--tag); mask: url("resource://mailworkspace/icons/folder.svg") center / 18px no-repeat; }
+.mw-p-cards { list-style: none; margin: 0; padding: 0 8px 8px; display: grid; gap: 6px; }
+.mw-p-card {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 12px; align-items: start; padding: 12px 12px 12px 14px;
+  border: 1px solid var(--mw-border); border-radius: var(--mw-radius); background: var(--mw-surface); cursor: pointer;
+}
+.mw-p-card:hover { border-color: var(--mw-border-strong); }
+.mw-p-card.selected { border-color: var(--mw-primary); box-shadow: 0 0 0 1px var(--mw-primary); background: color-mix(in srgb, var(--mw-primary-soft) 45%, var(--mw-surface)); }
+.mw-p-card.complete { background: color-mix(in srgb, var(--mw-success-soft) 60%, var(--mw-surface)); }
+.mw-p-icon { width: 34px; height: 34px; border-radius: var(--mw-radius); background: color-mix(in srgb, var(--tag) 14%, var(--mw-surface)); position: relative; }
+.mw-p-icon::after { content: ""; position: absolute; inset: 7px; background: var(--tag); mask: url("resource://mailworkspace/icons/account_tree.svg") center / 20px no-repeat; }
+.mw-p-icon.done::after { background: var(--mw-success); mask-image: url("resource://mailworkspace/icons/task_alt.svg"); }
+.mw-p-main { min-width: 0; display: grid; gap: 6px; }
+.mw-p-title { font: 650 14px var(--mw-font); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mw-p-sub { display: flex; align-items: center; gap: 8px; color: var(--mw-text-2); font-size: 12.5px; }
+.mw-p-progress { display: flex; align-items: center; gap: 10px; }
+.mw-p-bar { flex: 1; height: 6px; border-radius: var(--mw-radius-pill); background: var(--mw-surface-3); overflow: hidden; min-width: 80px; }
+.mw-p-bar > span { display: block; height: 100%; border-radius: inherit; background: var(--mw-primary); }
+.complete .mw-p-bar > span { background: var(--mw-success); }
+.mw-p-pct { font: 600 12px var(--mw-font); color: var(--mw-text-2); min-width: 34px; text-align: end; }
+.mw-p-progress.small { width: 140px; }
+.mw-p-progress.big .mw-p-bar { height: 8px; }
+.mw-p-star {
+  width: 30px; height: 30px; border: 0; border-radius: var(--mw-radius-pill); cursor: pointer; flex: none;
+  background: transparent url("resource://mailworkspace/icons/star.svg") center / 20px no-repeat; -moz-context-properties: fill; fill: var(--mw-text-3);
+}
+.mw-p-star:hover { background-color: var(--mw-hover); }
+.mw-p-star.on { background-image: url("resource://mailworkspace/icons/star.fill.svg"); fill: #e3a008; }
+
+/* Details */
+.mw-t-details {
+  width: 340px; flex: none; overflow: auto; padding: 14px 18px 18px; display: grid; align-content: start; gap: 14px;
+  background: var(--mw-surface); border: 1px solid var(--mw-border); border-radius: var(--mw-radius-l); box-shadow: var(--mw-shadow-1);
+}
+.mw-t-details[hidden] { display: none; }
+.mw-t-details .mw-td-head { display: flex; align-items: center; gap: 10px; }
+.mw-d-badge { width: 36px; height: 36px; flex: none; border-radius: var(--mw-radius); background: var(--mw-primary-soft); position: relative; }
+.mw-d-badge::after { content: ""; position: absolute; inset: 8px; background: var(--mw-primary); mask: url("resource://mailworkspace/icons/task_alt.svg") center / 20px no-repeat; }
+.mw-d-badge.plan::after { mask-image: url("resource://mailworkspace/icons/account_tree.svg"); }
+.mw-t-details .mw-d-title { flex: 1; margin: 0; font: 650 17px/1.3 var(--mw-font); }
+.mw-t-details .mw-d-close {
+  width: 30px; height: 30px; border: 0; border-radius: var(--mw-radius-pill); cursor: pointer;
+  background: transparent url("resource://mailworkspace/icons/close.svg") center / 18px no-repeat; -moz-context-properties: fill; fill: var(--mw-text-2);
+}
+.mw-t-details .mw-d-close:hover { background-color: var(--mw-hover); }
+.mw-d-goal { margin: 0; color: var(--mw-text-2); line-height: 1.45; white-space: pre-wrap; }
+.mw-d-facts { display: grid; border-top: 1px solid var(--mw-border); }
+.mw-d-fact { display: grid; grid-template-columns: 20px 90px minmax(0, 1fr); gap: 10px; align-items: center; min-height: 40px; padding: 6px 0; border-bottom: 1px solid var(--mw-border); }
+.mw-d-fact .mw-t-ico { color: var(--mw-text-3); }
+.mw-d-label { color: var(--mw-text-2); }
+.mw-d-value { min-width: 0; overflow-wrap: anywhere; }
+.mw-d-value .mw-t-chips { justify-content: flex-start; }
+.mw-d-link { border: 0; padding: 0; background: none; color: var(--mw-primary); font: 13.5px var(--mw-font); cursor: pointer; text-align: start; }
+.mw-d-section-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font: 650 11.5px var(--mw-font); letter-spacing: 0.06em; text-transform: uppercase; color: var(--mw-text-3); }
+.mw-d-subtasks ol, .mw-d-attach ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.mw-d-sub { display: flex; align-items: center; gap: 10px; min-height: 34px; padding: 0 6px; border-radius: var(--mw-radius-s); }
+.mw-d-sub:hover { background: var(--mw-hover); }
+.mw-d-sub-title { flex: 1; min-width: 0; border: 0; padding: 0; background: none; text-align: start; font: 13.5px var(--mw-font); color: var(--mw-text); cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mw-d-sub.done .mw-d-sub-title { color: var(--mw-text-3); text-decoration: line-through; }
+.mw-d-add-input { width: 100%; height: 34px; margin-top: 6px; padding: 0 12px; border: 1px dashed var(--mw-border-strong); border-radius: var(--mw-radius-pill); background: none; font: 13.5px var(--mw-font); color: var(--mw-text); }
+.mw-d-add-input:focus { outline: none; border-style: solid; border-color: var(--mw-primary); box-shadow: var(--mw-focus); }
+.mw-d-attach li { padding: 6px 8px; border-radius: var(--mw-radius-s); background: var(--mw-surface-2); font-size: 12.5px; }
+.mw-t-details .mw-d-actions { display: flex; gap: 8px; }
+.mw-t-details .mw-d-actions button { flex: 1; height: 34px; border-radius: var(--mw-radius-pill); cursor: pointer; font: 560 13px var(--mw-font); }
+.mw-t-details .mw-d-edit, .mw-t-details .mw-d-done { border: 1px solid var(--mw-border-strong); background: var(--mw-surface); color: var(--mw-text); }
+.mw-t-details .mw-d-edit:hover, .mw-t-details .mw-d-done:hover { background: var(--mw-surface-2); }
+.mw-t-details .mw-d-delete { border: 0; background: var(--mw-danger-soft); color: var(--mw-danger); }
+
+#mw-cal-menu button.danger { color: var(--mw-danger); }
+/* In the task view the page has its own New task; Thunderbird's button column goes. */
+#calendarTabPanel[mw-tasks] #primaryButtonSidePanel { display: none !important; }
+#mw-tasks button, #mw-tasks input { margin: 0; }
+.mw-t-search-input { appearance: none; background-image: none !important; padding: 0 !important; }
+.mw-p-count { white-space: nowrap; }
+.mw-d-add-input { box-sizing: border-box; }

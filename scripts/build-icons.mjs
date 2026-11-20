@@ -53,7 +53,7 @@ export const NAMES = [
   // browser
   "public", "tab", "history", "key", "print", "cookie", "delete_sweep",
   // calendar
-  "sell", "notifications", "group", "location_on", "event", "today",
+  "sell", "notifications", "group", "location_on", "event", "today", "date_range", "flag", "account_tree",
 ];
 
 // The Writer's ribbon, drawn thin like a word processor's (Material Symbols Outlined, weight 300),
