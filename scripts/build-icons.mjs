@@ -16,6 +16,8 @@ const source = join(root, "node_modules/@material-symbols/svg-400/rounded");
 
 export const NAMES = [
   // shell and docks
+  // app menu
+  "edit_square", "person_add", "sticky_note_2", "manage_accounts", "power_settings_new", "gavel", "build",
   "chat", "forum", "left_panel_close", "left_panel_open", "right_panel_close", "right_panel_open", "open_in_full", "close_fullscreen",
   "remove", "close", "more_vert", "more_horiz", "settings", "search", "refresh", "add", "arrow_back", "arrow_forward", "arrow_upward",
   "chevron_right", "keyboard_arrow_up", "chevron_left", "keyboard_arrow_down", "check", "check_circle", "error", "warning", "info", "help",

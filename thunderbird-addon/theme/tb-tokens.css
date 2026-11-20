@@ -1,4 +1,4 @@
-/* Mail Workspace palette mapped onto Thunderbird's own design tokens. Loaded
+/* Thoth palette mapped onto Thunderbird's own design tokens. Loaded
    into the main window and into about:3pane, about:message and
    about:addressbook, so every part of Thunderbird draws from one palette.
    Thunderbird switches between the -light and -dark variants itself. */

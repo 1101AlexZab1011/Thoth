@@ -1,4 +1,4 @@
-/* Mail Workspace Experiment: the privileged half of the add-on. Layout lives in
+/* Thoth Experiment: the privileged half of the add-on. Layout lives in
    layout.js (the space bar's tool groups in groups.js, the Browser and its sessions in web.js, its menu in webmenu.js), GUI state and automation in automation.js; all are loaded into
    this scope so they share helpers without globals leaking into Thunderbird. */
 /* global ExtensionAPI */
@@ -15,7 +15,7 @@ var workspace = class extends ExtensionAPI {
     const resProto = Services.io.getProtocolHandler("resource").QueryInterface(Ci.nsIResProtocolHandler);
     resProto.setSubstitutionWithFlags(RESOURCE_HOST, this.extension.rootURI, resProto.ALLOW_CONTENT_ACCESS);
     this.scope = { Services, ChromeUtils, Ci, Cc, Cu, ExtensionParent, IOUtils, PathUtils, console };
-    for (const file of ["address.js", "shortcuts.js", "websessions.js", "webhistory.js", "layout.js", "shell.js", "groups.js", "calendar.js", "tasks.js", "mail.js", "web.js", "webmenu.js", "aboutlogins.js", "automation.js"]) {
+    for (const file of ["address.js", "shortcuts.js", "websessions.js", "webhistory.js", "layout.js", "shell.js", "groups.js", "calendar.js", "tasks.js", "mail.js", "web.js", "webmenu.js", "appmenu.js", "aboutlogins.js", "automation.js"]) {
       // Through resource://, which is trusted also when the add-on runs from a folder.
       Services.scriptloader.loadSubScript(`resource://${RESOURCE_HOST}/experiments/workspace/${file}?${Date.now()}`, this.scope);
     }
@@ -97,7 +97,7 @@ var workspace = class extends ExtensionAPI {
             shortcut: (name) => { for (const listener of self.listeners.shortcut) listener(name); },
           };
           const apply = (window) => {
-            const run = () => { try { scope.applyLayout(window, ctx); } catch (error) { console.error("Mail Workspace layout failed", error); } };
+            const run = () => { try { scope.applyLayout(window, ctx); } catch (error) { console.error("Thoth layout failed", error); } };
             if (window.document.getElementById("tabmail")) run();
             else window.addEventListener("load", run, { once: true });
           };

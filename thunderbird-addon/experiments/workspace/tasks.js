@@ -393,7 +393,7 @@ function installTasks(window) {
     render();
   }
   let timer = 0;
-  const reload = () => { window.clearTimeout(timer); timer = window.setTimeout(() => { loading = load().catch((error) => console.error("Mail Workspace: tasks", error)); }, 150); };
+  const reload = () => { window.clearTimeout(timer); timer = window.setTimeout(() => { loading = load().catch((error) => console.error("Thoth: tasks", error)); }, 150); };
   const observer = {
     QueryInterface: ChromeUtils.generateQI(["calIObserver", "calICompositeObserver"]),
     onStartBatch() {}, onEndBatch() { reload(); }, onLoad() { reload(); }, onError() {}, onPropertyChanged() {}, onPropertyDeleting() {},

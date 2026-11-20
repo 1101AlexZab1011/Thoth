@@ -1,7 +1,7 @@
 [
   {
     "namespace": "workspace",
-    "description": "Chrome-level layout and automation for Mail Workspace: docks, theme, spaces, GUI state and actions.",
+    "description": "Chrome-level layout and automation for Thoth: docks, theme, spaces, GUI state and actions.",
     "types": [
       {
         "id": "Dock",
@@ -423,7 +423,7 @@
         "name": "setAppearance",
         "type": "function",
         "async": true,
-        "description": "Light, dark or system appearance for Thunderbird's window (built-in themes) and the Mail Workspace theme.",
+        "description": "Light, dark or system appearance for Thunderbird's window (built-in themes) and the Thoth theme.",
         "parameters": [
           {
             "name": "mode",

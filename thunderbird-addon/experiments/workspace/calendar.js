@@ -129,7 +129,7 @@ function installCalendar(window) {
     tags.replaceChildren(el("div", { class: "mw-cal-section-head" }, el("span", { text: "Tags" }), plus), el("ol", { class: "mw-cal-tag-list" }, ...items), toggle ?? "");
   }
   renderTags();
-  void countTags().catch((error) => console.error("Mail Workspace: tags", error));
+  void countTags().catch((error) => console.error("Thoth: tags", error));
   const prefObserver = { observe: () => renderTags() };
   Services.prefs.addObserver("calendar.categories.names", prefObserver);
   Services.prefs.addObserver("calendar.category.color.", prefObserver);
@@ -196,7 +196,7 @@ function installCalendar(window) {
     minimonthTitle();
   }
   let queued = 0;
-  const schedule = () => { if (!queued) queued = window.requestAnimationFrame(() => { queued = 0; try { decorate(); } catch (error) { console.error("Mail Workspace: calendar", error); } }); };
+  const schedule = () => { if (!queued) queued = window.requestAnimationFrame(() => { queued = 0; try { decorate(); } catch (error) { console.error("Thoth: calendar", error); } }); };
   const observer = new window.MutationObserver(schedule);
   for (const id of ["view-box", "calendar-list", "calMinimonth", "calendarViewHeader"]) { const node = $(id); if (node) observer.observe(node, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ["hidden", "style"] }); }
   schedule();
@@ -220,7 +220,7 @@ function installCalendar(window) {
     if (mode) panel.setAttribute("mw-side", mode); else panel.removeAttribute("mw-side");
     panel.toggleAttribute("mw-side-back", narrow ? sheetToday : sideOpen);
     sideToggle.setAttribute("aria-pressed", String(mode === "today"));
-    if (mode === "today") void renderToday().catch((error) => console.error("Mail Workspace: today", error));
+    if (mode === "today") void renderToday().catch((error) => console.error("Thoth: today", error));
   }
   sideToggle.addEventListener("click", () => {
     if (narrow) { const open = panel.getAttribute("mw-side") === "today"; shown = null; sheetToday = !open; }
@@ -392,7 +392,7 @@ function installCalendar(window) {
         event.stopPropagation();
         const copy = todo.clone();
         copy.isCompleted = true;
-        void todo.calendar.modifyItem(copy, todo).catch((error) => console.error("Mail Workspace: complete task", error));
+        void todo.calendar.modifyItem(copy, todo).catch((error) => console.error("Thoth: complete task", error));
       });
       const li = el("li", { class: `mw-sd-task${overdue ? " mw-sd-overdue" : ""}`, tabindex: "0" }, check,
         el("span", { class: "mw-sd-title", text: todo.title || "(No title)" }),
@@ -465,7 +465,7 @@ function installCalendar(window) {
       else if (button.dataset.mwSelected) { button.setAttribute("aria-selected", button.dataset.mwSelected); delete button.dataset.mwSelected; }
     }
     if (interval) interval.toggleAttribute("mw-hidden", on);
-    if (on) void renderAgenda().catch((error) => console.error("Mail Workspace: agenda", error));
+    if (on) void renderAgenda().catch((error) => console.error("Thoth: agenda", error));
   }
   agendaButton.addEventListener("click", () => setAgenda(true));
   const offAgenda = (event) => { if (agendaOn && event.target.closest?.(".calview-toggle-item:not(#mw-calTabAgenda), #previousViewButton, #nextViewButton, #todayViewButton, #mw-cal-today")) setAgenda(false); };

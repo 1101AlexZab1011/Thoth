@@ -1,4 +1,4 @@
-/* Mail Workspace chrome theme. Loaded as an author sheet into the messenger
+/* Thoth chrome theme. Loaded as an author sheet into the messenger
    window by the Experiment, and removed when the add-on stops. Everything is
    scoped to :root[mw-workspace] so nothing leaks if the attribute is absent. */
 @import url("resource://mailworkspace/shared/tokens.css");
@@ -376,3 +376,14 @@
 #tabmail-tabbox { min-width: 0 !important; }
 #tabpanelcontainer { min-width: 0 !important; grid-template-columns: minmax(0, 1fr) !important; }
 #tabpanelcontainer > * { min-width: 0 !important; }
+
+/* The app menu (☰) reuses the browser menu's look; About shows the logo, name and version. */
+.mw-app-menu { min-width: 260px; }
+.mw-app-menu .mw-app-menu-static { cursor: default; }
+.mw-app-menu .mw-app-menu-static:hover { background: none !important; }
+.mw-app-about { display: grid; justify-items: center; gap: 4px; padding: 14px 16px 10px; text-align: center; }
+.mw-app-about-logo { width: 64px; height: 64px; margin-bottom: 6px; }
+.mw-app-about-name { font: 700 18px var(--mw-font); color: var(--mw-text); }
+.mw-app-about-version { font: 12.5px var(--mw-font); color: var(--mw-text-2); min-height: 1em; }
+.mw-app-about-base { max-width: 240px; font: 12px/1.4 var(--mw-font); color: var(--mw-text-3); }
+.mw-app-menu .mw-app-about img.mw-app-about-logo { width: 64px !important; height: 64px !important; max-width: none !important; }

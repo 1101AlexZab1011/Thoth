@@ -1,8 +1,16 @@
-# Mail MCP Workspace
+<p align="center"><img src="assets/brand/thoth.svg" width="128" height="128" alt="Thoth"></p>
 
-A portable, local setup for [email-mcp](https://github.com/codefuturist/email-mcp) and Thunderbird.
+<h1 align="center">Thoth</h1>
 
-`email-mcp` gives an MCP-compatible AI client access to a mailbox over IMAP and SMTP. Thunderbird is a separate desktop client for the same mailbox. This repository does not modify Thunderbird, copy a Thunderbird profile, or connect to Thunderbird directly.
+<p align="center">Mail, calendar, tasks, documents and an AI agent in one workspace.</p>
+
+Thoth is a desktop workspace built on Thunderbird: mail, calendar and tasks,
+a document editor, slides, drawing, notes, a browser and a terminal, with an
+AI agent that works in all of them through MCP. This repository holds the
+app (the `thunderbird-addon/` folder), its MCP servers and the setup around
+[email-mcp](https://github.com/codefuturist/email-mcp).
+
+`email-mcp` gives an MCP-compatible AI client access to a mailbox over IMAP and SMTP, independently of the app. Nothing here copies a Thunderbird profile or changes Thunderbird itself; Thoth runs as an add-on.
 
 ## What is included
 
@@ -10,7 +18,7 @@ A portable, local setup for [email-mcp](https://github.com/codefuturist/email-mc
 - `mail-workflow-mcp`, an optional provider-neutral IMAP workflow server.
 - Commands to configure, verify, and run the MCP server.
 - Portable skills for Pending-mail review and chronological email summaries.
-- Mail Workspace, an optional Thunderbird add-on: chat and file docks, a file
+- Thoth itself, installed into Thunderbird as an add-on: chat and file docks, a file
   viewer, artifacts, paint, and agent control of the GUI, connected through
   [listener-mcp](https://github.com/1101AlexZab1011/listener-mcp).
 - Documentation for setting up the same mailbox on another machine.
@@ -96,7 +104,7 @@ claude mcp add-json --scope user mail-gui "{\"command\":\"node\",\"args\":[\"$re
 
 Agent Chat's MCP server (`listener`) is added for every agent session by
 `listener-mcp init --user`; see
-[Mail Workspace for Thunderbird](#mail-workspace-for-thunderbird).
+[Thoth for Thunderbird](#mail-workspace-for-thunderbird).
 
 For Codex, add both blocks to `~/.codex/config.toml`. Restart the client after editing its configuration. Other MCP clients use the same command and argument in their equivalent user configuration.
 
@@ -166,9 +174,9 @@ Copy a skill directory into the skill location used by Codex, Claude Code, or
 another SKILL.md-compatible agent. The agent must also have access to the email
 and workflow MCP servers above.
 
-## Mail Workspace for Thunderbird
+## Thoth for Thunderbird
 
-Mail Workspace is an optional Thunderbird add-on (in `thunderbird-addon/`)
+Thoth is an optional Thunderbird add-on (in `thunderbird-addon/`)
 that turns Thunderbird into a workspace built around your agent.
 
 - **One window, no tab bar, no top bar.** You navigate with the spaces

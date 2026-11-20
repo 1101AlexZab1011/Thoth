@@ -1,4 +1,4 @@
-/* Slides space: the PPTist editor (vendor/slides) themed with Mail Workspace tokens, plus our start
+/* Slides space: the PPTist editor (vendor/slides) themed with Thoth tokens, plus our start
    screen, header status and notice bar. */
 :root {
   --pp-accent: var(--mw-primary);

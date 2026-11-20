@@ -1,12 +1,13 @@
 {
   "manifest_version": 2,
-  "name": "Mail Workspace",
-  "description": "Agent-first workspace for Thunderbird: chat and file docks, file viewer, artifacts, paint, and GUI control for your agent.",
-  "version": "2.14.23",
+  "name": "Thoth",
+  "description": "Thoth: mail, calendar, tasks, documents and an AI agent in one workspace, with chat and file docks, a file viewer, artifacts, paint and GUI control for the agent.",
+  "version": "2.14.25",
   "icons": {
-    "16": "app-icon.svg",
-    "32": "app-icon.svg",
-    "64": "app-icon.svg"
+    "16": "icons/thoth-small.svg",
+    "32": "icons/thoth-small.svg",
+    "64": "icons/thoth.svg",
+    "128": "icons/thoth.svg"
   },
   "browser_specific_settings": {
     "gecko": {

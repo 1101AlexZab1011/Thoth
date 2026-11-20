@@ -1,7 +1,7 @@
-# Slides (a PPTist fork for Mail Workspace)
+# Slides (a PPTist fork for Thoth)
 
 This is [PPTist](https://github.com/pipipi-pikachu/PPTist) (AGPL-3.0, © 2020-present pipipi-pikachu)
-adapted to run as the Slides space of Mail Workspace (this repository). It is based on upstream
+adapted to run as the Slides space of Thoth (this repository). It is based on upstream
 commit 04e06cb of https://github.com/pipipi-pikachu/PPTist and keeps that project's AGPL-3.0 licence (LICENSE here).
 
 What changed:

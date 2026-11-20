@@ -1,4 +1,4 @@
-/* Editor tabs (shared/doctabs.js): VS Code style, in Mail Workspace colours. */
+/* Editor tabs (shared/doctabs.js): VS Code style, in Thoth colours. */
 .dt-bar {
   flex: none; display: flex; align-items: stretch; height: 36px; overflow-x: auto; overflow-y: hidden;
   background: var(--mw-surface-2); border-bottom: 1px solid var(--mw-border); scrollbar-width: none;

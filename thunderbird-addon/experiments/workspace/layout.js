@@ -1,4 +1,4 @@
-/* Mail Workspace chrome layout. Loaded into the Experiment's scope; every
+/* Thoth chrome layout. Loaded into the Experiment's scope; every
    change it makes to a messenger window is undone by `removeLayout`.
 
    #tabmail-container (an hbox) becomes:
@@ -184,10 +184,15 @@ function applyLayout(window, ctx) {
   const stopSearch = installSearch(window);
   // The calendar tab's panel exists from the start; its views fill in when it is first shown.
   let stopCalendar = () => {};
-  try { stopCalendar = installCalendar(window); } catch (error) { console.error("Mail Workspace: calendar", error); }
+  try { stopCalendar = installCalendar(window); } catch (error) { console.error("Thoth: calendar", error); }
   let stopTasks = () => {};
-  try { stopTasks = installTasks(window); } catch (error) { console.error("Mail Workspace: tasks", error); }
+  try { stopTasks = installTasks(window); } catch (error) { console.error("Thoth: tasks", error); }
   dropEchoTooltips(window);
+  // The window is titled "… - Thoth", not "… - Mozilla Thunderbird".
+  const root = document.documentElement;
+  const oldModifier = root.getAttribute("titlemodifier");
+  root.setAttribute("titlemodifier", "Thoth");
+  try { tabmail.setDocumentTitle?.(tabmail.currentTabInfo); } catch { /* set on the next tab change */ }
   // Refit when the window changes size (debounced to a frame).
   let pending = 0;
   const refit = () => { if (pending) return; pending = window.requestAnimationFrame(() => { pending = 0; fit(window, null, ctxNotify(window)); }); };
@@ -234,12 +239,14 @@ function applyLayout(window, ctx) {
     tabmail.unregisterTabMonitor(monitor);
     observer.disconnect();
     stopSearch();
+    if (oldModifier) root.setAttribute("titlemodifier", oldModifier);
     stopCalendar();
     stopTasks();
     stopGroups();
     stopWeb();
     document.getElementById("mw-files-dock-button")?.remove();
     document.getElementById("mw-appmenu-button")?.remove();
+    document.getElementById("mw-app-menu")?.remove();
     document.getElementById("mw-terminal")?.remove();
     delete window.mwCtx;
     delete window.mwAutoStack;
@@ -303,13 +310,13 @@ function themeDocument(doc, url) {
   if (!doc?.defaultView || themedDocs.has(doc)) return;
   markAppearance(doc);
   onePaneBehaviour(doc);
-  try { mailPaneBehaviour(doc); } catch (error) { console.error("Mail Workspace: mail", error); }
+  try { mailPaneBehaviour(doc); } catch (error) { console.error("Thoth: mail", error); }
   dropEchoTooltips(doc);
   try {
     doc.defaultView.windowUtils.loadSheetUsingURIString(url, doc.defaultView.windowUtils.AUTHOR_SHEET);
     themedDocs.add(doc);
     doc.defaultView.addEventListener("unload", () => themedDocs.delete(doc), { once: true });
-  } catch (error) { console.error("Mail Workspace theme", error); }
+  } catch (error) { console.error("Thoth theme", error); }
 }
 
 function paneDocuments(root) {

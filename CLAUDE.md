@@ -20,7 +20,7 @@ Exclude Sent, Drafts, Trash, and Junk from "incoming mail".
 
 ## Operating Thunderbird for the user
 
-The Mail Workspace add-on exposes the whole GUI through the `mail-gui` MCP
+The Thoth add-on exposes the whole GUI through the `mail-gui` MCP
 server (see the `mail-workspace` skill). "This email", "the file I have open",
 "what I drew" refer to `gui_state`. Read mail with the email tools, not by
 selecting messages: selecting marks them read.

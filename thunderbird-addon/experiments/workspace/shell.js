@@ -1,4 +1,4 @@
-/* Mail Workspace window shell: space management between panels, sidebar
+/* Thoth window shell: space management between panels, sidebar
    buttons, the Ctrl+F search overlay, one-window behaviour for messages and
    tooltip hygiene. Loaded into the Experiment scope after layout.js. */
 /* global Services, ChromeUtils, keyHint, readDock, writeDock, applyDock, MIN_WIDTH, RAIL */
@@ -156,7 +156,8 @@ function installSidebarButtons(window, ctx) {
   if (!top || document.getElementById("mw-files-dock-button")) return;
   const files = makeSpaceButton(document, { id: "mw-files-dock-button", title: "File browser (Ctrl+6)", icon: "folder_open", onclick: () => ctx.update(ctx.filesSide, { state: "toggle" }) });
   top.insertBefore(files, document.getElementById("tasksButton")?.nextSibling ?? null);
-  const menu = makeSpaceButton(document, { id: "mw-appmenu-button", title: "Thunderbird menu", icon: "menu", onclick: (event) => window.PanelUI?.show(event) });
+  const menu = makeSpaceButton(document, { id: "mw-appmenu-button", title: "Menu", icon: "menu", onclick: () => toggleAppMenu(window) });
+  menu.setAttribute("aria-haspopup", "menu");
   bottom?.insertBefore(menu, bottom.firstChild);
 }
 
@@ -206,7 +207,7 @@ function installSearch(window) {
 
 // ------------------------------------------------- panes: one window only --
 // Double-click or Enter on a message would open it in its own window (or an
-// invisible tab). In Mail Workspace a message is read in the message pane.
+// invisible tab). In Thoth a message is read in the message pane.
 
 function onePaneBehaviour(doc) {
   if (!/^about:3pane/.test(doc.documentURI) || doc.mwOnePane) return;

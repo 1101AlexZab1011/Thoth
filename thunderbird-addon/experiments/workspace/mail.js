@@ -12,9 +12,9 @@ function mailPaneBehaviour(doc) {
   if (!win || doc.mwMail) return;
   doc.mwMail = true;
   const ready = (fn) => (doc.readyState === "complete" ? fn() : win.addEventListener("load", fn, { once: true }));
-  if (/^about:3pane/.test(doc.documentURI)) ready(() => { try { mailListBar(doc); } catch (error) { console.error("Mail Workspace: mail list", error); } });
-  if (/^about:message/.test(doc.documentURI)) ready(() => { try { mailHeaderLayout(doc); } catch (error) { console.error("Mail Workspace: message header", error); } });
-  if (/multimessageview\.xhtml/.test(doc.documentURI)) ready(() => { try { mailSummary(doc); } catch (error) { console.error("Mail Workspace: summary", error); } });
+  if (/^about:3pane/.test(doc.documentURI)) ready(() => { try { mailListBar(doc); } catch (error) { console.error("Thoth: mail list", error); } });
+  if (/^about:message/.test(doc.documentURI)) ready(() => { try { mailHeaderLayout(doc); } catch (error) { console.error("Thoth: message header", error); } });
+  if (/multimessageview\.xhtml/.test(doc.documentURI)) ready(() => { try { mailSummary(doc); } catch (error) { console.error("Thoth: summary", error); } });
 }
 
 /** The conversation summary: senders by name (the address on hover), as in the list. */

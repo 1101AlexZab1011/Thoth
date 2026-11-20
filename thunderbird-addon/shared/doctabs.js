@@ -176,7 +176,7 @@ export class DocTabs {
     try {
       const data = await this.adapter.draft(tab);
       await browser.storage.local.set({ [this.draftKey(tab)]: { title: tab.title, path: tab.path, at: Date.now(), data } });
-    } catch (error) { console.warn("Mail Workspace: draft not kept", error); }
+    } catch (error) { console.warn("Thoth: draft not kept", error); }
   }
 
   async readDraft(tab) {

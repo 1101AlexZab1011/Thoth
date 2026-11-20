@@ -1,11 +1,11 @@
 ---
 name: mail-workspace
-description: Operate the Mail Workspace GUI in Thunderbird for the user through the mail-gui MCP server - see what is selected, open spaces, files, artifacts, paint and the Writer document editor, write and edit files, click and type in any part of the interface, build artifacts, run commands in the shared terminal. Use when the user asks you to do something in their mail client, file viewer, artifacts, paint, calendar, contacts or tasks, or refers to what they are looking at.
+description: Operate the Thoth GUI in Thunderbird for the user through the mail-gui MCP server - see what is selected, open spaces, files, artifacts, paint and the Writer document editor, write and edit files, click and type in any part of the interface, build artifacts, run commands in the shared terminal. Use when the user asks you to do something in their mail client, file viewer, artifacts, paint, calendar, contacts or tasks, or refers to what they are looking at.
 ---
 
-# Mail Workspace
+# Thoth
 
-The user works in Thunderbird with the Mail Workspace add-on: chat on the right
+The user works in Thunderbird with the Thoth add-on: chat on the right
 (this conversation), a file browser dock on the left, and spaces for Mail,
 Address Book, Calendar, Tasks, Files (viewer), Artifacts, Paint, Writer, Slides,
 Draw, Notes and a web Browser, plus a terminal that slides up over the window (Ctrl+`). The
@@ -19,7 +19,7 @@ user instead of describing clicks.
   selected text), the file browser's folder and selection, the open artifact,
   the paint canvas. "This", "these", "what I'm looking at" refer to it.
 - `gui_snapshot` lists what can be clicked, with refs (`c12` for Thunderbird,
-  `files:p3` for a Mail Workspace page). Use `query` to narrow it. Refs change
+  `files:p3` for a Thoth page). Use `query` to narrow it. Refs change
   with every snapshot: take a new one after the UI changes.
 - `gui_screenshot` shows the window when layout or visuals matter.
 

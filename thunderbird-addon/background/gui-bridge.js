@@ -216,7 +216,7 @@ async function handle(event) {
     await broker("/v1/events", json({ channel: CHANNEL, type: "result", reply_to: event.id, agent: AGENT, data: reply }));
     await broker("/v1/ack", json({ agent: AGENT, event_ids: [event.id] }));
   } catch (error) {
-    console.error("Mail Workspace: GUI command failed", error);
+    console.error("Thoth: GUI command failed", error);
   }
 }
 

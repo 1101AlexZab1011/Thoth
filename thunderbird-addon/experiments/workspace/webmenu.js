@@ -1,4 +1,4 @@
-/* Mail Workspace Browser, the session's menu (☰ at the end of the toolbar, like Firefox's app menu) and
+/* Thoth Browser, the session's menu (☰ at the end of the toolbar, like Firefox's app menu) and
    what it opens: the session's history, downloads, saved passwords, page tools and session settings.
    Loaded into the Experiment's scope after web.js and webhistory.js.
 
@@ -54,7 +54,7 @@ function saveHistorySoon(id) {
     try {
       await IOUtils.makeDirectory(PathUtils.parent(file), { createAncestors: true, ignoreExisting: true });
       await IOUtils.writeJSON(file, webHistory.get(id) ?? [], { tmpPath: `${file}.tmp` });
-    } catch (error) { console.warn("Mail Workspace: could not save the Browser history", error); }
+    } catch (error) { console.warn("Thoth: could not save the Browser history", error); }
   }, 1500));
 }
 
@@ -66,7 +66,7 @@ function changeHistory(id, change) {
     const list = await sessionHistory(id);
     const changed = change(list);
     if (changed !== list) { webHistory.set(id, changed); saveHistorySoon(id); }
-  }).catch((error) => console.warn("Mail Workspace: Browser history", error));
+  }).catch((error) => console.warn("Thoth: Browser history", error));
   webHistoryQueue.set(id, next);
   return next;
 }
@@ -131,7 +131,7 @@ async function noteSiteIcon(info) {
     try {
       await IOUtils.makeDirectory(PathUtils.parent(file), { createAncestors: true, ignoreExisting: true });
       await IOUtils.writeJSON(file, Object.fromEntries(siteIcons), { tmpPath: `${file}.tmp` });
-    } catch (error) { console.warn("Mail Workspace: could not save the site icons", error); }
+    } catch (error) { console.warn("Thoth: could not save the site icons", error); }
   }, 3000);
 }
 
@@ -220,7 +220,7 @@ async function savePage(window, info) {
     target: target.path,
   });
   (await Downloads.getList(Downloads.ALL)).add(download);
-  void download.start().catch((error) => console.warn("Mail Workspace: Save Page failed", error));
+  void download.start().catch((error) => console.warn("Thoth: Save Page failed", error));
   return { saving: target.path };
 }
 
@@ -264,7 +264,7 @@ async function offerLogin(window, tabId, { origin, formActionOrigin, username, p
     el.type = "button";
     el.addEventListener("click", async () => {
       if (agentActing(window)) return; // the user's answer, never the agent's
-      try { await run(); } catch (error) { console.warn("Mail Workspace: saving the login failed", error); }
+      try { await run(); } catch (error) { console.warn("Thoth: saving the login failed", error); }
       bar.remove();
     });
     return el;
@@ -411,7 +411,7 @@ function openWebMenu(window, info, view = "main") {
           input.addEventListener("keydown", (event) => {
             event.stopPropagation();
             if (event.key === "Enter") {
-              try { renameSession(session.id, input.value); renderWebChrome(window); } catch (error) { console.warn("Mail Workspace:", error.message); }
+              try { renameSession(session.id, input.value); renderWebChrome(window); } catch (error) { console.warn("Thoth:", error.message); }
               openWebMenu(window, info, "sessions");
             } else if (event.key === "Escape") openWebMenu(window, info, "sessions");
           });

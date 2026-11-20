@@ -1,4 +1,4 @@
-// Mail Workspace background: installs the layout, owns the spaces, pairs with
+// Thoth background: installs the layout, owns the spaces, pairs with
 // the local listener-mcp broker, and runs the agent's GUI command loop.
 import { ensurePaired, host } from "./shared/broker.js";
 import { startGuiBridge } from "./background/gui-bridge.js";
@@ -30,18 +30,18 @@ async function installSpaces() {
         // open); updating it then fails. Recreate it.
         try { await browser.spaces.update(existing.id, props); }
         catch (error) {
-          console.warn(`Mail Workspace: recreating the ${space.name} space`, error);
+          console.warn(`Thoth: recreating the ${space.name} space`, error);
           await browser.spaces.remove(existing.id).catch(() => {});
           await browser.spaces.create(space.name, space.url, props);
         }
       }
       // Or the update "succeeds" and still no button shows: forget that space and make it again.
       if (!(await browser.workspace.spaceShown(space.name))) {
-        console.warn(`Mail Workspace: the ${space.name} button was missing; making it again`);
+        console.warn(`Thoth: the ${space.name} button was missing; making it again`);
         await browser.workspace.dropSpace(space.name);
         await browser.spaces.create(space.name, space.url, props);
       }
-    } catch (error) { console.error(`Mail Workspace: could not install the ${space.name} space`, error); }
+    } catch (error) { console.error(`Thoth: could not install the ${space.name} space`, error); }
   }
 }
 
@@ -177,7 +177,7 @@ function installMenus() {
   browser.menus.onClicked.addListener(async (info) => {
     if (info.menuItemId !== MENU_SAVE_TO_NOTES) return;
     for (const message of info.selectedMessages?.messages ?? []) {
-      try { await saveMessageToNotes(message.id); } catch (error) { console.error("Mail Workspace: Save to Notes failed", error); }
+      try { await saveMessageToNotes(message.id); } catch (error) { console.error("Thoth: Save to Notes failed", error); }
     }
   });
 }
@@ -185,7 +185,7 @@ function installMenus() {
 async function start() {
   const pages = { [CHAT_SIDE]: browser.runtime.getURL("chat.html?dock=1"), [FILES_SIDE]: browser.runtime.getURL("files.html") };
   // Each step on its own: a failure in one must never keep the agent's GUI bridge from starting.
-  const step = (name, run) => Promise.resolve().then(run).catch((error) => console.error(`Mail Workspace: ${name} failed`, error));
+  const step = (name, run) => Promise.resolve().then(run).catch((error) => console.error(`Thoth: ${name} failed`, error));
   await step("layout", () => browser.workspace.install({ filesSide: FILES_SIDE, terminalUrl: browser.runtime.getURL("terminal.html"), leftUrl: pages.left, rightUrl: pages.right }));
   await step("spaces", installSpaces);
   await step("menus", installMenus);

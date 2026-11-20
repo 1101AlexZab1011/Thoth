@@ -1,4 +1,4 @@
-/* Mail Workspace design tokens. Every page and the chrome theme build on these,
+/* Thoth design tokens. Every page and the chrome theme build on these,
    so light/dark and density change in one place. Colours follow Material 3 roles. */
 :root {
   color-scheme: light dark;

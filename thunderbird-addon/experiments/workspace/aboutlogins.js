@@ -27,7 +27,7 @@ function installAboutLogins(rootURI, componentManager) {
   };
   const registrar = componentManager.QueryInterface(Ci.nsIComponentRegistrar);
   const cid = Services.uuid.generateUUID();
-  registrar.registerFactory(cid, "Mail Workspace about:logins", "@mozilla.org/network/protocol/about;1?what=logins", factory);
+  registrar.registerFactory(cid, "Thoth about:logins", "@mozilla.org/network/protocol/about;1?what=logins", factory);
   return () => {
     try { registrar.unregisterFactory(cid, factory); } catch { /* already gone */ }
     chrome.destruct();

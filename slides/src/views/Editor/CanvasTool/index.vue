@@ -235,7 +235,7 @@ const {
 
 // A script element: a new script file (starter code, written by the host page) in a box mid-slide.
 const insertScript = async () => {
-  if (!hooks.createScript) return message.error('Scripts need the Slides space of Mail Workspace')
+  if (!hooks.createScript) return message.error('Scripts need the Slides space of Thoth')
   const src = await hooks.createScript()
   const width = 480
   const height = 320

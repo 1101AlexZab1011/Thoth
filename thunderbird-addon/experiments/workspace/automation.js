@@ -1,4 +1,4 @@
-/* Mail Workspace GUI automation: what the agent can see and do in the chrome.
+/* Thoth GUI automation: what the agent can see and do in the chrome.
 
    snapshot()  lists visible, actionable elements of the main window and of the
                in-process documents inside it (about:3pane, about:message,

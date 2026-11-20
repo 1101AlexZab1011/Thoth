@@ -1,4 +1,4 @@
-// Mail Workspace host: the local service behind the file browser, the viewer
+// Thoth host: the local service behind the file browser, the viewer
 // and artifacts. Loopback only. Every API call carries a listener-mcp token;
 // the host asks the broker who it belongs to and checks its scopes:
 //

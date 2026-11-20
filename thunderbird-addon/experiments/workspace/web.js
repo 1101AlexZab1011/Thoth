@@ -1,4 +1,4 @@
-/* Mail Workspace Browser: web pages in Thunderbird's own content tabs, in sessions: the space bar's Web
+/* Thoth Browser: web pages in Thunderbird's own content tabs, in sessions: the space bar's Web
    group lists them. Loaded into the Experiment's scope (with address.js, shortcuts.js and websessions.js);
    `installWeb` returns the undo.
 
@@ -60,7 +60,7 @@ function sessionOfTab(info, state = readSessions()) {
 /** A new session with a container of its own; it becomes the last used one. */
 function createSession(name) {
   const state = readSessions();
-  const identity = containers().create(`Mail Workspace · ${name}`, "fingerprint", "blue");
+  const identity = containers().create(`Thoth · ${name}`, "fingerprint", "blue");
   const session = { id: newWebSessionId(state.sessions), name, userContextId: identity.userContextId };
   state.sessions.push(session);
   state.last = session.id;
@@ -84,7 +84,7 @@ function renameSession(id, name) {
   if (state.sessions.some((s) => s !== session && s.name.toLowerCase() === text.toLowerCase())) throw new Error(`There is already a session "${text}"`);
   session.name = text;
   writeSessions(state);
-  try { containers().update(session.userContextId, `Mail Workspace · ${text}`, "fingerprint", "blue"); } catch { /* the name is ours */ }
+  try { containers().update(session.userContextId, `Thoth · ${text}`, "fingerprint", "blue"); } catch { /* the name is ours */ }
   return session;
 }
 
@@ -180,7 +180,7 @@ async function resolveAddress(input) {
   try {
     const engine = await Services.search.getDefault();
     if (engine) return engine.getSubmission(parsed.search).uri.spec;
-  } catch (error) { console.warn("Mail Workspace: no default search engine", error); }
+  } catch (error) { console.warn("Thoth: no default search engine", error); }
   return WEB_FALLBACK_SEARCH + encodeURIComponent(parsed.search);
 }
 
@@ -521,7 +521,7 @@ function runWebShortcut(window, info, { command, index }) {
     case "find-next": info.findbar?.onFindAgainCommand(false); break;
     case "find-previous": info.findbar?.onFindAgainCommand(true); break;
     case "print": window.PrintUtils?.startPrintWindow(browser.browsingContext); break;
-    case "save-page": void savePage(window, info).then(() => openWebMenu(window, info, "downloads"), (error) => console.warn("Mail Workspace:", error.message)); break;
+    case "save-page": void savePage(window, info).then(() => openWebMenu(window, info, "downloads"), (error) => console.warn("Thoth:", error.message)); break;
     case "history": openWebMenu(window, info, "history"); break;
     case "downloads": openWebMenu(window, info, "downloads"); break;
     case "view-source": if (browser.currentURI?.schemeIs("http") || browser.currentURI?.schemeIs("https")) void openWeb(window, `view-source:${browser.currentURI.spec}`, inSession); break;
@@ -562,7 +562,7 @@ function webSessionsFlyout(window, { rerender, close }) {
       if (done) return;
       done = true;
       if (save && input.value.trim() && input.value.trim() !== session.name) {
-        try { renameSession(session.id, input.value); renderWebChrome(window); } catch (error) { console.warn("Mail Workspace:", error.message); }
+        try { renameSession(session.id, input.value); renderWebChrome(window); } catch (error) { console.warn("Thoth:", error.message); }
       }
       rerender();
     };

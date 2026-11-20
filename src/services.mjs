@@ -13,7 +13,7 @@ const logs = appDirs("mail-workspace").state;
 export const hostService = () => userService({
   name: "mail-workspace-host",
   label: "dev.mail-workspace.host",
-  description: "Mail Workspace host (files, viewer, artifacts)",
+  description: "Thoth host (files, viewer, artifacts)",
   command: [process.execPath, join(here, "workspace-main.mjs"), "serve"],
   after: "listener-mcp.service",
   log: join(logs, "host.log"),

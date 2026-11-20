@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// mail-gui MCP server: the agent's hands in Mail Workspace (Thunderbird).
+// mail-gui MCP server: the agent's hands in Thoth (Thunderbird).
 //
 // GUI tools publish a command on listener-mcp channel mail/gui/commands and
 // wait for the add-on's reply; artifact tools talk to the workspace host
@@ -28,7 +28,7 @@ async function gui(command, args = {}, { timeoutMs = 120_000 } = {}) {
   const c = await connect();
   const sent = await c.publish({ channel: "mail/gui/commands", type: "command", data: { command, args: wirePaths(args) }, ttlMs: timeoutMs, waitReplyMs: timeoutMs });
   const reply = sent.replies?.[0]?.data;
-  if (!reply) throw new Error("Thunderbird did not answer. Is it running with the Mail Workspace add-on?");
+  if (!reply) throw new Error("Thunderbird did not answer. Is it running with the Thoth add-on?");
   if (!reply.ok) throw new Error(reply.error);
   return reply.result;
 }
@@ -65,7 +65,7 @@ const register = (name, description, inputSchema, handler, annotations = {}) => 
 
 register("gui_state", "What the user is looking at in Thunderbird: the active space; the selected folder and messages; calendar, task or contact selection; the docks; the file open in the viewer (and its page/selection); the file browser's folder and selection; the open artifact; the paint canvas. Start here.", {}, async () => text(await gui("state")), { readOnlyHint: true });
 
-register("gui_snapshot", "List the visible, clickable things in Thunderbird with refs to act on (gui_click, gui_type, …). Sections: the Thunderbird window itself, then each visible Mail Workspace page (chat, files, viewer, artifacts, paint). Pass `query` to filter by label. Refs expire with the next snapshot.", {
+register("gui_snapshot", "List the visible, clickable things in Thunderbird with refs to act on (gui_click, gui_type, …). Sections: the Thunderbird window itself, then each visible Thoth page (chat, files, viewer, artifacts, paint). Pass `query` to filter by label. Refs expire with the next snapshot.", {
   query: z.string().optional().describe("Only items whose label or id contains this text"),
   limit: z.number().int().min(10).max(1000).optional(),
 }, async ({ query, limit }) => text(formatSnapshot(await gui("snapshot", { query, limit }))), { readOnlyHint: true });
@@ -108,7 +108,7 @@ register("gui_dock", "Show, minimize, maximize or resize a dock: chat (right sid
   width: z.number().int().min(260).max(1600).optional(),
 }, async ({ dock, state, width }) => text(await gui("dock", { dock, state, width })));
 
-register("workspace_settings", "Change Mail Workspace settings: appearance (system, light, dark: Thunderbird switches too) and the code theme of the file viewer (one-dark-pro, dracula, github-dark, github-light, monokai, night-owl, tokyo-night, catppuccin-mocha, catppuccin-latte, nord, material-theme-palenight, solarized-dark, gruvbox-dark-medium, ayu-dark, rose-pine). Without arguments, returns the current settings.", {
+register("workspace_settings", "Change Thoth settings: appearance (system, light, dark: Thunderbird switches too) and the code theme of the file viewer (one-dark-pro, dracula, github-dark, github-light, monokai, night-owl, tokyo-night, catppuccin-mocha, catppuccin-latte, nord, material-theme-palenight, solarized-dark, gruvbox-dark-medium, ayu-dark, rose-pine). Without arguments, returns the current settings.", {
   appearance: z.enum(["system", "light", "dark"]).optional(),
   code_theme: z.string().optional(),
 }, async ({ appearance, code_theme }) => text(await gui("settings", { appearance, codeTheme: code_theme })));
@@ -241,7 +241,7 @@ register("files_trash", "Move a file or folder to the Trash (restorable). The us
 // --------------------------------------------------------- terminal --
 // Terminals are shared with the user: what the agent runs shows in the panel.
 
-register("terminal_list", "The terminals open in the Mail Workspace panel (Ctrl+`), with ids, titles and working directories.", {}, async () => text(await hostCall("/v1/term")), { readOnlyHint: true });
+register("terminal_list", "The terminals open in the Thoth panel (Ctrl+`), with ids, titles and working directories.", {}, async () => text(await hostCall("/v1/term")), { readOnlyHint: true });
 
 register("terminal_open", "Open a terminal in the panel: a new tab, or a split of the focused one (right or down). Returns its id. The panel slides up unless show is false.", {
   placement: z.enum(["tab", "right", "down"]).default("tab"),
