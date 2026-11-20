@@ -2049,6 +2049,18 @@ async function openDialog() {
   if (path) await openFile(path);
 }
 
+/** The system's folder chooser for a path field: the file keeps its name and goes into the chosen folder. */
+async function chooseFolder(input) {
+  const value = input.value.trim();
+  const cut = Math.max(value.lastIndexOf("/"), value.lastIndexOf("\\"));
+  const name = value.slice(cut + 1) || "drawing.svg";
+  const folder = await browser.workspace.pickPath({ mode: "folder", title: "Folder for the new drawing", path: cut > 0 ? value.slice(0, cut) : "~" }).catch((error) => { toast(error.message); return null; });
+  if (!folder) return;
+  input.value = `${folder.replace(/[\\/]$/, "")}/${name}`;
+  input.focus();
+  input.setSelectionRange(input.value.length - name.length, input.value.length - (/\.svg$/i.test(name) ? 4 : 0));
+}
+
 /** Pick a page size and where the file goes; the new drawing opens in a tab. */
 function newDrawingDialog() {
   return new Promise((resolve) => {
@@ -2077,7 +2089,7 @@ function newDrawingDialog() {
     const backdrop = h("div.dialog-backdrop", { onclick: (e) => { if (e.target === backdrop) close(null); } },
       h("div.dialog.new-drawing", { role: "dialog", "aria-label": "New drawing" },
         h("h2", {}, "New drawing"), sizes, h("div.row", {}, orientation),
-        h("label.field-wide", {}, h("span", {}, "File"), pathInput),
+        h("label.field-wide", {}, h("span", {}, "File"), h("div.path-row", {}, pathInput, iconButton("folder_open", "Choose the folder", () => void chooseFolder(pathInput)))),
         h("div.actions", {}, h("button.btn", { type: "button", onclick: () => close(null) }, "Cancel"), h("span.spacer"),
           h("button.btn.primary", { type: "button", onclick: () => void create() }, "Create"))));
     backdrop.addEventListener("keydown", (e) => { if (e.key === "Escape") close(null); if (e.key === "Enter") void create(); e.stopPropagation(); });

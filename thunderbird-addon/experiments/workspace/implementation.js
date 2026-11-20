@@ -152,6 +152,7 @@ var workspace = class extends ExtensionAPI {
         async webNavigate(action) { return scope.webNavigate(self.mainWindow(), action); },
         async webClick(x, y) { return scope.webClick(self.mainWindow(), x, y); },
         async setAppearance(mode) { return scope.setAppearance(mode, self.messengerWindows()); },
+        async pickPath(options) { return pickPath(self.mainWindow(), options ?? {}); },
         async focusOwnTab() { for (const window of self.messengerWindows()) scope.markTabs(window, self.extension); return true; },
         onDockChanged: new ExtensionCommon.EventManager({
           context,
@@ -186,3 +187,25 @@ var workspace = class extends ExtensionAPI {
     return api;
   }
 };
+
+/**
+ * The system's file chooser over Thunderbird's window: a folder ("folder"), a file to open ("open")
+ * or a file to save ("save"), starting in `path` (~ is the home folder). Resolves to the chosen
+ * path, or null when cancelled.
+ */
+function pickPath(window, { mode = "folder", title = "", path = "" } = {}) {
+  const picker = Cc["@mozilla.org/filepicker;1"].createInstance(Ci.nsIFilePicker);
+  const modes = { folder: Ci.nsIFilePicker.modeGetFolder, open: Ci.nsIFilePicker.modeOpen, save: Ci.nsIFilePicker.modeSave };
+  picker.init(window.browsingContext, title || (mode === "folder" ? "Choose a folder" : "Choose a file"), modes[mode] ?? modes.folder);
+  const home = Services.dirsvc.get("Home", Ci.nsIFile).path;
+  const full = String(path || "").replace(/^~(?=\/|$)/, home);
+  try {
+    let dir = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsIFile);
+    dir.initWithPath(full || home);
+    while (dir && !(dir.exists() && dir.isDirectory())) dir = dir.parent;
+    if (dir) picker.displayDirectory = dir;
+  } catch { /* start wherever the chooser likes */ }
+  if (mode === "save" && full) picker.defaultString = full.split("/").pop();
+  if (mode !== "folder") picker.appendFilters(Ci.nsIFilePicker.filterAll);
+  return new Promise((resolve) => picker.open((result) => resolve(result === Ci.nsIFilePicker.returnCancel ? null : picker.file?.path ?? null)));
+}
