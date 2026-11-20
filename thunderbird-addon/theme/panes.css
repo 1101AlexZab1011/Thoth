@@ -338,3 +338,12 @@
 :root:has(#categories) :is(#paneDeck, .sticky-container) hbox { flex-wrap: wrap !important; min-width: 0 !important; }
 :root:has(#categories) #paneDeck :is(*, groupbox, fieldset, .indent, vbox, div) { min-width: 0 !important; max-width: 100%; }
 :root:has(#categories) .main-content { overflow-x: hidden !important; }
+/* The search bar stays on top while the pane scrolls: on the page's own background, not a white
+   box, with room below it so headings don't slide under it at rest. */
+:root:has(#categories) .sticky-container { background: var(--mw-bg) !important; box-shadow: none !important; border: 0 !important; padding-block: 12px 8px !important; }
+:root:has(#categories) .sticky-container::before, :root:has(#categories) .sticky-container::after { display: none !important; }
+:root:has(#categories) #paneDeck { padding-top: 8px !important; }
+:root:has(#categories) #paneDeck .subcategory, :root:has(#categories) #paneDeck .header { scroll-margin-top: 72px; }
+:root:has(#categories) #paneDeck table { width: 100% !important; max-width: 100% !important; table-layout: fixed !important; }
+:root:has(#categories) #paneDeck :is(td, th) { overflow-wrap: anywhere; white-space: normal !important; }
+:root:has(#categories) #paneDeck :is(td, th) :is(menulist, input, select) { max-width: 100%; }
