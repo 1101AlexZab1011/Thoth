@@ -198,7 +198,37 @@ var workspace = class extends ExtensionAPI {
  * or a file to save ("save"), starting in `path` (~ is the home folder). Resolves to the chosen
  * path, or null when cancelled.
  */
-function pickPath(window, { mode = "folder", title = "", path = "", filter = "all", read = false, multiple = false } = {}) {
+/**
+ * Linux: GTK opens its file chooser at the size it saved last time. Under a tiling window manager
+ * that is the whole screen (once tiled, the size is saved and comes back even when floating), so a
+ * saved size larger than the screen is put back to 70% of it before the chooser opens.
+ */
+async function fitGtkChooser(window) {
+  if (Services.appinfo.OS !== "Linux") return;
+  try {
+    const { Subprocess } = ChromeUtils.importESModule("resource://gre/modules/Subprocess.sys.mjs");
+    const gsettings = await Subprocess.pathSearch("gsettings").catch(() => null);
+    if (!gsettings) return;
+    const read = await Subprocess.call({ command: gsettings, arguments: ["get", "org.gtk.Settings.FileChooser", "window-size"] });
+    const text = await read.stdout.readString();
+    await read.wait();
+    const [w, h] = (text.match(/-?\d+/g) ?? []).map(Number);
+    // GTK saves device pixels; the window's screen is in CSS pixels.
+    const sw = window.screen.availWidth * window.devicePixelRatio;
+    const sh = window.screen.availHeight * window.devicePixelRatio;
+    if (!(w > sw * 0.9 || h > sh * 0.9)) return;
+    const fixed = `(${Math.round(sw * 0.7)}, ${Math.round(sh * 0.7)})`;
+    const write = await Subprocess.call({ command: gsettings, arguments: ["set", "org.gtk.Settings.FileChooser", "window-size", fixed] });
+    await write.wait();
+  } catch (error) { console.warn("Thoth: file chooser size", error); }
+}
+
+async function pickPath(window, options = {}) {
+  await fitGtkChooser(window);
+  return pickPathNow(window, options);
+}
+
+function pickPathNow(window, { mode = "folder", title = "", path = "", filter = "all", read = false, multiple = false } = {}) {
   const picker = Cc["@mozilla.org/filepicker;1"].createInstance(Ci.nsIFilePicker);
   const modes = { folder: Ci.nsIFilePicker.modeGetFolder, open: Ci.nsIFilePicker.modeOpen, save: Ci.nsIFilePicker.modeSave };
   picker.init(window.browsingContext, title || (mode === "folder" ? "Choose a folder" : multiple ? "Choose files" : "Choose a file"), mode === "open" && multiple ? Ci.nsIFilePicker.modeOpenMultiple : modes[mode] ?? modes.folder);
