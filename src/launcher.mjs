@@ -16,7 +16,7 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { createHash, randomUUID } from "node:crypto";
 import { inflateSync } from "node:zlib";
-import { isMac, isWindows } from "./platform.mjs";
+import { assertRealAppData, isMac, isWindows } from "./platform.mjs";
 
 const run = promisify(execFile);
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -356,6 +356,7 @@ async function pairAhead(uuid) {
 // ---- install, launch, uninstall ----------------------------------------------------------------
 
 export async function install({ env = process.env, launch: start = true, pair = true } = {}) {
+  assertRealAppData(env);
   const thunderbird = await findThunderbird(env);
   if (!thunderbird) throw new Error(`Thunderbird is not installed. Install it first: ${INSTALL_HINT}`);
   const { base, profile } = thothDirs(env);

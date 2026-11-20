@@ -7,6 +7,7 @@
 //   status
 import { parseArgs } from "node:util";
 import { hostService, watcherService } from "./services.mjs";
+import { assertRealAppData } from "./platform.mjs";
 
 const [command = "serve", ...rest] = process.argv.slice(2);
 const print = (value) => console.log(JSON.stringify(value, null, 2));
@@ -17,6 +18,7 @@ if (command === "serve") {
   for (const signal of ["SIGINT", "SIGTERM"]) process.on(signal, () => host.close().then(() => process.exit(0)));
 } else if (command === "install" || command === "install-service") {
   const { values } = parseArgs({ args: rest, options: { watch: { type: "string" }, every: { type: "string", default: "60" } } });
+  assertRealAppData();
   const result = { host: await hostService().install() };
   if (values.watch) {
     const seconds = Number(values.every);

@@ -5,7 +5,7 @@
 // Linux keeps the XDG folders it always used. macOS and Windows get their own
 // conventions (Application Support, AppData), as listener-mcp does.
 import { execFile, spawn } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { homedir, platform } from "node:os";
 import { delimiter, dirname, join } from "node:path";
 import { promisify } from "node:util";
@@ -32,6 +32,32 @@ export function appDirs(name, env = process.env) {
     state: join(env.XDG_STATE_HOME ?? join(home, ".local", "state"), name),
     cache: join(env.XDG_CACHE_HOME ?? join(home, ".cache"), name),
   };
+}
+
+/**
+ * Windows: stop when this process runs inside a packaged (MSIX) app, such as the Claude desktop app's
+ * terminal. Windows then redirects what it creates under %APPDATA% and %LOCALAPPDATA% into that app's
+ * private store (%LOCALAPPDATA%\Packages\<app>\LocalCache), which Thunderbird, the logon tasks and the
+ * taskbar never see: Thoth would start on an empty profile and the services without their tokens.
+ * Found by creating a probe folder in %APPDATA% and looking for it in the packages' stores.
+ */
+export function assertRealAppData(env = process.env) {
+  if (!isWindows || !env.APPDATA || !env.LOCALAPPDATA) return;
+  const probe = `thoth-appdata-probe-${process.pid}-${Date.now()}`;
+  const path = join(env.APPDATA, probe);
+  let redirected = null;
+  try {
+    mkdirSync(path);
+    const packages = join(env.LOCALAPPDATA, "Packages");
+    for (const name of existsSync(packages) ? readdirSync(packages) : []) {
+      if (existsSync(join(packages, name, "LocalCache", "Roaming", probe))) { redirected = name; break; }
+    }
+  } catch { return; } finally {
+    try { rmSync(path, { recursive: true, force: true }); } catch { /* gone */ }
+  }
+  if (redirected) {
+    throw new Error(`This terminal runs inside the packaged app ${redirected.replace(/_[a-z0-9]+$/, "")}, and Windows keeps what it creates in AppData private to that app, out of Thoth's and Thunderbird's sight. Run this command in a normal terminal (Windows Terminal, PowerShell or Git Bash) instead.`);
+  }
 }
 
 /** email-mcp keeps its accounts in ~/.config/email-mcp on every system (it only knows XDG). */

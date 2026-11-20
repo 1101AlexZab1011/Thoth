@@ -46,7 +46,15 @@ They are found on `PATH` or where their installers put them (the app bundle on
 macOS, Program Files on Windows). `MAIL_WORKSPACE_INKSCAPE`,
 `MAIL_WORKSPACE_SOFFICE` and `QUARTO` point at a program anywhere else.
 
-On Windows, run the commands below in PowerShell (or Git Bash).
+On Windows, run the commands below in PowerShell (or Git Bash), in a normal
+terminal window. Not in a terminal that runs inside a packaged (MSIX) app,
+such as the Claude desktop app's terminal: Windows keeps what such an app
+creates in `%APPDATA%` and `%LOCALAPPDATA%` private to it
+(`%LOCALAPPDATA%\Packages\<app>\LocalCache`), so Thunderbird, the logon
+tasks and the taskbar would not see Thoth's profile, listener-mcp's tokens
+or the settings. `npm run thoth:install` and `npm run services:install`
+check this and stop with that message. An agent in such an app can still
+use Thoth afterwards; it only must not do the setup.
 
 ## Install on another machine
 
