@@ -9,12 +9,13 @@
 // The entry starts Thunderbird directly on the profile; nothing else runs at launch.
 import { execFile, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
-import { copyFile, mkdir, readFile, rm, writeFile, chmod } from "node:fs/promises";
+import { copyFile, mkdir, readdir, readFile, rename, rm, writeFile, chmod } from "node:fs/promises";
 import { homedir } from "node:os";
-import { delimiter, dirname, join, resolve } from "node:path";
+import { basename, delimiter, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
+import { inflateSync } from "node:zlib";
 import { isMac, isWindows } from "./platform.mjs";
 
 const run = promisify(execFile);
@@ -116,11 +117,17 @@ export async function profileUuid(profile) {
 
 /** The add-on file: dist/agent-chat.xpi when built here, else the latest release. */
 async function addonFile(dest) {
+  // On Windows a running Thoth keeps its add-on file open, and replacing it fails with EBUSY/EPERM
+  // (or "UNKNOWN"): say what to do instead.
+  const busy = (error) => {
+    if (isWindows && ["EBUSY", "EPERM", "UNKNOWN"].includes(error.code)) throw new Error("Thoth is running and holds its add-on file. Quit Thoth (☰ → Quit), then run npm run thoth:install again");
+    throw error;
+  };
   const local = join(root, "dist", "agent-chat.xpi");
-  if (existsSync(local)) { await copyFile(local, dest); return "dist/agent-chat.xpi"; }
+  if (existsSync(local)) { await copyFile(local, dest).catch(busy); return "dist/agent-chat.xpi"; }
   const response = await fetch(RELEASE_XPI);
   if (!response.ok) throw new Error(`Could not download the add-on (${response.status}); run npm run chat:addon first`);
-  await writeFile(dest, Buffer.from(await response.arrayBuffer()));
+  await writeFile(dest, Buffer.from(await response.arrayBuffer())).catch(busy);
   return RELEASE_XPI;
 }
 
@@ -129,9 +136,53 @@ async function addonFile(dest) {
 const PNG_SIZES = [16, 24, 32, 48, 64, 128, 256, 512];
 const png = (size) => join(brand, `thoth-${size}.png`);
 
-/** A Windows .ico of PNG images (Vista and later). */
+/** The pixels of an 8-bit RGBA, non-interlaced PNG (Thoth's own icons): { width, height, rgba }. */
+export function decodePng(data) {
+  if (data.readUInt32BE(12) !== 0x49484452) throw new Error("not a PNG");
+  const width = data.readUInt32BE(16), height = data.readUInt32BE(20);
+  if (data[24] !== 8 || data[25] !== 6 || data[28] !== 0) throw new Error("only 8-bit RGBA, non-interlaced PNGs");
+  const idat = [];
+  for (let at = 8; at < data.length;) {
+    const length = data.readUInt32BE(at), type = data.toString("ascii", at + 4, at + 8);
+    if (type === "IDAT") idat.push(data.subarray(at + 8, at + 8 + length));
+    if (type === "IEND") break;
+    at += 12 + length;
+  }
+  const raw = inflateSync(Buffer.concat(idat));
+  const stride = width * 4, rgba = Buffer.alloc(stride * height);
+  for (let y = 0; y < height; y++) {
+    const filter = raw[y * (stride + 1)], line = raw.subarray(y * (stride + 1) + 1, (y + 1) * (stride + 1));
+    for (let x = 0; x < stride; x++) {
+      const a = x >= 4 ? rgba[y * stride + x - 4] : 0, b = y ? rgba[(y - 1) * stride + x] : 0, c = x >= 4 && y ? rgba[(y - 1) * stride + x - 4] : 0;
+      const p = a + b - c, pa = Math.abs(p - a), pb = Math.abs(p - b), pc = Math.abs(p - c);
+      const predictor = [0, a, b, (a + b) >> 1, pa <= pb && pa <= pc ? a : pb <= pc ? b : c][filter];
+      rgba[y * stride + x] = (line[x] + predictor) & 0xff;
+    }
+  }
+  return { width, height, rgba };
+}
+
+/** An icon image as a bitmap (DIB): 32-bit BGRA rows bottom-up, then an all-clear AND mask. */
+function dibImage({ width, height, rgba }) {
+  const maskStride = Math.ceil(width / 32) * 4;
+  const out = Buffer.alloc(40 + width * height * 4 + maskStride * height);
+  out.writeUInt32LE(40, 0); out.writeInt32LE(width, 4); out.writeInt32LE(height * 2, 8);
+  out.writeUInt16LE(1, 12); out.writeUInt16LE(32, 14); out.writeUInt32LE(width * height * 4 + maskStride * height, 20);
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const from = (y * width + x) * 4, to = 40 + ((height - 1 - y) * width + x) * 4;
+      out[to] = rgba[from + 2]; out[to + 1] = rgba[from + 1]; out[to + 2] = rgba[from]; out[to + 3] = rgba[from + 3];
+    }
+  }
+  return out;
+}
+
+/**
+ * A Windows .ico: bitmaps up to 128 px, PNG at 256 px. The taskbar draws an icon of PNG images only
+ * as a blank page (Explorer and ExtractIconEx read them), so the small sizes are bitmaps.
+ */
 export async function writeIco(file, sizes = [16, 24, 32, 48, 64, 128, 256]) {
-  const images = await Promise.all(sizes.map((s) => readFile(png(s))));
+  const images = await Promise.all(sizes.map(async (s) => { const data = await readFile(png(s)); return s >= 256 ? data : dibImage(decodePng(data)); }));
   const header = Buffer.alloc(6 + 16 * images.length);
   header.writeUInt16LE(0, 0); header.writeUInt16LE(1, 2); header.writeUInt16LE(images.length, 4);
   let offset = header.length;
@@ -142,7 +193,9 @@ export async function writeIco(file, sizes = [16, 24, 32, 48, 64, 128, 256]) {
     header.writeUInt32LE(data.length, at + 8); header.writeUInt32LE(offset, at + 12);
     offset += data.length;
   });
-  await writeFile(file, Buffer.concat([header, ...images]));
+  const ico = Buffer.concat([header, ...images]);
+  await writeFile(file, ico);
+  return ico;
 }
 
 /** A macOS .icns of PNG images. */
@@ -240,8 +293,13 @@ export function windowsShortcutScript({ thunderbird, profile, ico, links }) {
 }
 
 async function windowsShortcuts(thunderbird, profile, base, env) {
-  const ico = join(base, "thoth.ico");
-  await writeIco(ico);
+  // The icon's file name carries a hash of its content: Windows caches a shortcut's icon by path, so a
+  // changed icon under the old name could keep showing the old picture (or a blank one).
+  const staging = join(base, "thoth.ico.new");
+  const hash = createHash("sha256").update(await writeIco(staging)).digest("hex").slice(0, 8);
+  const ico = join(base, `thoth-${hash}.ico`);
+  for (const old of await readdir(base)) if (/^thoth(-[0-9a-f]+)?\.ico$/.test(old) && old !== basename(ico)) await rm(join(base, old), { force: true });
+  await rename(staging, ico);
   const startMenu = join(env.APPDATA ?? join(homedir(), "AppData", "Roaming"), "Microsoft", "Windows", "Start Menu", "Programs", "Thoth.lnk");
   const desktop = join(env.USERPROFILE ?? homedir(), "Desktop", "Thoth.lnk");
   const script = windowsShortcutScript({ thunderbird, profile, ico, links: [startMenu, desktop] });

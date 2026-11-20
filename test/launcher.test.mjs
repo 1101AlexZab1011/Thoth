@@ -46,6 +46,15 @@ test("icons for Windows (.ico) and macOS (.icns) are well formed", async () => {
     assert.equal(count, 7);
     const last = 6 + 16 * (count - 1);
     assert.equal(ico.readUInt32LE(last + 12) + ico.readUInt32LE(last + 8), ico.length);
+    // The taskbar shows an icon of PNG images only as a blank page: bitmaps up to 128 px, PNG at 256.
+    for (let i = 0; i < count - 1; i++) {
+      const at = ico.readUInt32LE(6 + 16 * i + 12), size = ico[6 + 16 * i];
+      assert.equal(ico.readUInt32LE(at), 40, `${size} px is a bitmap`);
+      assert.deepEqual([ico.readInt32LE(at + 4), ico.readInt32LE(at + 8), ico.readUInt16LE(at + 14)], [size, size * 2, 32]);
+      const alpha = Array.from({ length: size * size }, (_, p) => ico[at + 40 + p * 4 + 3]);
+      assert.ok(alpha.some((a) => a === 255) && alpha.some((a) => a === 0), `${size} px keeps its transparency`);
+    }
+    assert.equal(ico.readUInt32BE(ico.readUInt32LE(last + 12)), 0x89504e47, "256 px is a PNG");
     await writeIcns(join(dir, "t.icns"));
     const icns = await readFile(join(dir, "t.icns"));
     assert.equal(icns.toString("ascii", 0, 4), "icns");
