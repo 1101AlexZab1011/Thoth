@@ -11,9 +11,17 @@ export function popup(anchor, content, { className = "" } = {}) {
   const menu = h(`div.menu${className ? `.${className}` : ""}`, { role: "menu" }, content);
   document.body.append(menu);
   const rect = anchor.getBoundingClientRect();
-  const box = menu.getBoundingClientRect();
+  // The unscaled size: the menu pops in with a scale animation, so its box is tiny at first.
+  const box = { width: menu.offsetWidth, height: menu.offsetHeight };
+  const below = innerHeight - rect.bottom - 10;
+  const above = rect.top - 10;
+  // Below if it fits, else above if it fits, else on the roomier side, scrolling.
+  const down = box.height <= below || (box.height > above && below >= above);
+  menu.style.maxHeight = `${Math.max(120, down ? below : above)}px`;
+  menu.style.overflowY = "auto";
+  const height = Math.min(box.height, down ? below : above);
   menu.style.left = `${Math.max(8, Math.min(rect.left, innerWidth - box.width - 8))}px`;
-  menu.style.top = `${rect.bottom + box.height + 8 > innerHeight ? Math.max(8, rect.top - box.height - 4) : rect.bottom + 2}px`;
+  menu.style.top = `${down ? rect.bottom + 2 : Math.max(8, rect.top - height - 4)}px`;
   const outside = (event) => { if (!menu.contains(event.target) && !anchor.contains(event.target)) close(); };
   const keys = (event) => { if (event.key === "Escape") { event.preventDefault(); close(); anchor.focus?.(); } };
   function close() {
@@ -32,13 +40,15 @@ export function popup(anchor, content, { className = "" } = {}) {
  * A checked item shows a tick, as ONLYOFFICE marks the current choice.
  */
 export function dropdown(anchor, items) {
+  // Filled before it is placed, so it is measured (and kept on screen) with its items.
   const list = h("div.wp-list");
-  const { close } = popup(anchor, list);
+  let close = () => {};
   for (const item of items) {
     if (item === "-") { list.append(h("hr")); continue; }
     const mark = item.checked ? icon("check", { size: 18 }) : item.icon ? icon(item.icon, { size: 18 }) : h("span", { style: { width: "18px", display: "inline-block" } });
     list.append(h("button", { type: "button", role: "menuitem", disabled: Boolean(item.disabled), onclick: () => { close(); item.run(); } }, mark, item.label));
   }
+  ({ close } = popup(anchor, list));
   list.querySelector("button:not(:disabled)")?.focus();
 }
 

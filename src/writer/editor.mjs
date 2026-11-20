@@ -22,6 +22,7 @@ import { Fragment, Slice } from "@milkdown/kit/prose/model";
 import { EditorState, Plugin, PluginKey, TextSelection } from "@milkdown/kit/prose/state";
 import { Decoration, DecorationSet } from "@milkdown/kit/prose/view";
 import { undoDepth, redoDepth } from "@milkdown/kit/prose/history";
+import { liftListItem } from "@milkdown/kit/prose/schema-list";
 import remarkMath from "remark-math";
 import YAML from "yaml";
 import { assemble, gapsOf, inlineTokens, splitQuarto } from "./quarto.mjs";
@@ -448,6 +449,15 @@ function drawTitleBlock(dom, source, hooks) {
     } else field.title = "Edit in File → Info";
     row.append(field);
     dom.append(row);
+  }
+  // The table of contents, where the PDF and the Word file put it: the page fills it in (headings and
+  // their pages) and keeps it current.
+  if (meta.toc === true) {
+    const toc = document.createElement("div");
+    toc.className = "tb-toc";
+    toc.contentEditable = "false";
+    dom.append(toc);
+    hooks.onTitleBlock?.(dom);
   }
 }
 
@@ -906,6 +916,37 @@ export async function createWriter(root, hooks = {}, options = {}) {
   const run = (key, payload) => editor.action((ctx) => ctx.get(commandsCtx).call(key.key ?? key, payload));
 
   /** Remove character formatting from the selection; links stay links. */
+  /**
+   * Bullets / Numbering as Word's buttons: in a list of the other kind, the list changes kind; in a
+   * list of this kind, the list goes (its items become paragraphs); elsewhere the paragraphs become
+   * a list.
+   */
+  function toggleList(kind) {
+    const want = kind === "bullet" ? schema.nodes.bullet_list : schema.nodes.ordered_list;
+    const { $from } = view.state.selection;
+    for (let d = $from.depth; d > 0; d--) {
+      const node = $from.node(d);
+      if (node.type !== schema.nodes.bullet_list && node.type !== schema.nodes.ordered_list) continue;
+      const pos = $from.before(d);
+      if (node.type === want) {
+        // Lift every item of this list out, a level at a time.
+        view.dispatch(view.state.tr.setSelection(TextSelection.between(view.state.doc.resolve(pos + 1), view.state.doc.resolve(pos + node.nodeSize - 1))));
+        for (let guard = 0; guard < 8; guard++) {
+          const inList = (() => { const $a = view.state.selection.$from; for (let k = $a.depth; k > 0; k--) if ($a.node(k).type === schema.nodes.list_item) return true; return false; })();
+          if (!inList || !liftListItem(schema.nodes.list_item)(view.state, view.dispatch)) break;
+        }
+        return;
+      }
+      const tr = view.state.tr.setNodeMarkup(pos, want, kind === "ordered" ? { order: 1, spread: node.attrs.spread } : { spread: node.attrs.spread });
+      node.forEach((child, offset, index) => {
+        if (child.type === schema.nodes.list_item) tr.setNodeMarkup(pos + 1 + offset, undefined, { ...child.attrs, listType: kind, label: kind === "ordered" ? `${index + 1}.` : "•" });
+      });
+      view.dispatch(tr);
+      return;
+    }
+    run(kind === "bullet" ? cm.wrapInBulletListCommand : cm.wrapInOrderedListCommand);
+  }
+
   function clearFormatting() {
     const { from, to, empty } = view.state.selection;
     const tr = view.state.tr;
@@ -1026,6 +1067,7 @@ export async function createWriter(root, hooks = {}, options = {}) {
       const marks = { underline: "underline", highlight: "highlight", smallcaps: "smallcaps", superscript: "superscript", subscript: "subscript" };
       if (marks[name]) toggleMark(schema.marks[marks[name]])(view.state, view.dispatch);
       else if (name === "clear") clearFormatting();
+      else if (name === "bullet" || name === "ordered") toggleList(name);
       else {
         const key = map[name];
         if (!key) throw new Error(`Unknown command ${name}`);

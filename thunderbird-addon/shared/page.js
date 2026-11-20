@@ -133,9 +133,14 @@ export function contextMenu(event, items) {
   }
   document.body.append(menu);
   const { innerWidth, innerHeight } = window;
-  const rect = menu.getBoundingClientRect();
-  menu.style.left = `${Math.min(event.clientX, innerWidth - rect.width - 8)}px`;
-  menu.style.top = `${Math.min(event.clientY, innerHeight - rect.height - 8)}px`;
+  // The unscaled size (the menu pops in with a scale animation, so its box is tiny at first); a menu
+  // taller than the window scrolls.
+  menu.style.maxHeight = `${innerHeight - 16}px`;
+  menu.style.overflowY = "auto";
+  const width = menu.offsetWidth;
+  const height = Math.min(menu.offsetHeight, innerHeight - 16);
+  menu.style.left = `${Math.max(8, Math.min(event.clientX, innerWidth - width - 8))}px`;
+  menu.style.top = `${Math.max(8, Math.min(event.clientY, innerHeight - height - 8))}px`;
   const close = (e) => { if (!menu.contains(e.target)) { menu.remove(); removeEventListener("pointerdown", close, true); } };
   setTimeout(() => addEventListener("pointerdown", close, true));
   addEventListener("keydown", (e) => { if (e.key === "Escape") menu.remove(); }, { once: true });

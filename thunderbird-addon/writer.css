@@ -431,3 +431,17 @@ body.wp .menu .wp-colors .wp-auto { width: 100%; height: 26px; }
 /* The running head, greyed as Word and ONLYOFFICE show a header while the body is being edited. */
 .pv-head { position: absolute; display: flex; align-items: flex-end; font-family: var(--pv-sans); font-size: calc(var(--pv-size) * 0.92); line-height: 1.1; color: #000; opacity: 0.45; white-space: nowrap; overflow: hidden; }
 .toolbar .rb-btn .rb-label .rb-caret { display: inline-block; vertical-align: -2px; margin: 0 0 0 1px; }
+
+/* The table of contents under the title, as Word sets one: entries indented by level, a dotted
+   leader to the page number. Clicking an entry goes to its heading. */
+.wr-doc .wr-titleblock .tb-toc { margin: 1.4em 0 0.6em; text-align: start; font-family: var(--pv-body-font, inherit); user-select: none; }
+.wr-doc .wr-titleblock .toc-title { font-family: var(--pv-heading-font); font-weight: 700; font-size: 1.15em; margin-bottom: 0.5em; }
+.wr-doc .wr-titleblock .toc-entry { display: flex; align-items: baseline; gap: 4px; width: 100%; padding: 1px 0; border: 0; background: none; font: inherit; color: inherit; text-align: start; cursor: pointer; }
+.wr-doc .wr-titleblock .toc-entry:hover .toc-text { color: #1f5fbf; text-decoration: underline; }
+.wr-doc .wr-titleblock .toc-entry[data-level="2"] { padding-inline-start: 1.5em; }
+.wr-doc .wr-titleblock .toc-entry[data-level="3"] { padding-inline-start: 3em; }
+.wr-doc .wr-titleblock .toc-entry[data-level="4"] { padding-inline-start: 4.5em; }
+.wr-doc .wr-titleblock .toc-text { flex: none; max-width: 80%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wr-doc .wr-titleblock .toc-dots { flex: 1; min-width: 1em; border-bottom: 1px dotted currentColor; opacity: 0.6; transform: translateY(-0.25em); }
+.wr-doc .wr-titleblock .toc-page { flex: none; min-width: 1.2em; text-align: end; }
+.wr-doc .wr-titleblock .toc-empty { color: #777; font-style: italic; margin: 0; }

@@ -74,6 +74,8 @@ export function createRulers({ hruler, vruler, page, scroll, getGeometry, getZoo
     if (hruler.hidden || page.hidden) return;
     const { ctx, w, h } = size(hruler);
     const f = hFrame();
+    if (drag?.kind === "marginLeft") f.textLeft += drag.delta;
+    if (drag?.kind === "marginRight") f.textRight += drag.delta;
     ctx.clearRect(0, 0, w, h);
     const x0 = Math.round(f.left) + 0.5;
     const x1 = Math.round(f.right) - 0.5;
@@ -110,7 +112,11 @@ export function createRulers({ hruler, vruler, page, scroll, getGeometry, getZoo
     if (vruler.hidden || page.hidden) return;
     const { ctx, w, h } = size(vruler);
     ctx.clearRect(0, 0, w, h);
-    for (const f of vFrames()) drawSheet(ctx, w, f);
+    for (const f of vFrames()) {
+      if (drag?.kind === "marginTop") f.textTop += drag.delta;
+      if (drag?.kind === "marginBottom") f.textBottom += drag.delta;
+      drawSheet(ctx, w, f);
+    }
   }
 
   function drawSheet(ctx, w, f) {
@@ -143,29 +149,36 @@ export function createRulers({ hruler, vruler, page, scroll, getGeometry, getZoo
   }
 
   // --- dragging ----------------------------------------------------------------------
+  // Indent markers apply as they move (the text reflows under the pointer, in 0.25 cm steps; the
+  // steps of one drag undo together); a margin's edge moves with the pointer and applies on release
+  // (a new margin lays out every page). Each marker is grabbed anywhere on its shape, ±6 px.
 
-  const near = (a, b, d = 5) => Math.abs(a - b) <= d;
+  const near = (a, b, d) => Math.abs(a - b) <= d;
 
   function hTarget(x, y) {
     const f = hFrame();
     const para = getParagraph();
+    const h = hruler.clientHeight;
     if (para) {
       const left = f.textLeft + para.left * f.cm;
       const firstLine = f.textLeft + (para.left + para.firstLine) * f.cm;
       const right = f.textRight - para.right * f.cm;
-      if (y <= 6 && near(x, firstLine)) return "firstLine";
-      if (y > 6 && y <= 10 && near(x, left)) return "hanging";
-      if (y > 10 && near(x, left)) return "left";
-      if (y > 6 && near(x, right)) return "right";
+      if (y <= h * 0.45 && near(x, firstLine, 6)) return "firstLine";
+      if (near(x, right, 6) && y > h * 0.3) return "right";
+      if (y > h * 0.3 && y <= h * 0.68 && near(x, left, 6)) return "hanging";
+      if (y > h * 0.68 && near(x, left, 6)) return "left";
     }
-    if (near(x, f.textLeft, 3)) return "marginLeft";
-    if (near(x, f.textRight, 3)) return "marginRight";
+    // A margin's edge: just outside the markers (they sit on it by default), in the grey.
+    if (near(x, f.textLeft - 9, 4)) return "marginLeft";
+    if (near(x, f.textRight + 9, 4)) return "marginRight";
+    if (!para && near(x, f.textLeft, 5)) return "marginLeft";
+    if (!para && near(x, f.textRight, 5)) return "marginRight";
     return null;
   }
   function vTarget(y) {
     for (const f of vFrames()) {
-      if (near(y, f.textTop, 3)) return "marginTop";
-      if (near(y, f.textBottom, 3)) return "marginBottom";
+      if (near(y, f.textTop, 5)) return "marginTop";
+      if (near(y, f.textBottom, 5)) return "marginBottom";
     }
     return null;
   }
@@ -175,55 +188,64 @@ export function createRulers({ hruler, vruler, page, scroll, getGeometry, getZoo
     if (drag) return;
     const r = hruler.getBoundingClientRect();
     const target = hTarget(event.clientX - r.left, event.clientY - r.top);
-    hruler.style.cursor = target ? "col-resize" : "default";
-    hruler.title = target ? TITLES[target] : "";
+    hruler.style.cursor = target ? "ew-resize" : "default";
+    hruler.title = target ? `${TITLES[target]} — drag to change` : "";
   });
   vruler.addEventListener("pointermove", (event) => {
     if (drag) return;
     const target = vTarget(event.clientY - vruler.getBoundingClientRect().top);
-    vruler.style.cursor = target ? "row-resize" : "default";
-    vruler.title = target ? TITLES[target] : "";
+    vruler.style.cursor = target ? "ns-resize" : "default";
+    vruler.title = target ? `${TITLES[target]} — drag to change` : "";
   });
 
+  const snap = (v, step) => Math.round(v / step) * step;
   function begin(event, canvas, kind, axis) {
     event.preventDefault();
     canvas.setPointerCapture(event.pointerId);
-    drag = { kind, axis, start: axis === "x" ? event.clientX : event.clientY, delta: 0 };
+    drag = { kind, axis, start: axis === "x" ? event.clientX : event.clientY, delta: 0, para: getParagraph(), applied: null };
     const pageRect = page.getBoundingClientRect();
     const scrollRect = scroll.getBoundingClientRect();
     Object.assign(guide.style, axis === "x"
       ? { display: "block", left: `${event.clientX}px`, top: `${scrollRect.top}px`, height: `${scrollRect.height}px`, width: "0", borderLeft: "1px dashed #555", borderTop: "0" }
       : { display: "block", top: `${event.clientY}px`, left: `${Math.max(scrollRect.left, pageRect.left)}px`, width: `${Math.min(scrollRect.width, pageRect.width)}px`, height: "0", borderTop: "1px dashed #555", borderLeft: "0" });
+    canvas.style.cursor = axis === "x" ? "ew-resize" : "ns-resize";
+  }
+  /** The indents a drag of `cm` from its start gives (null for margins). */
+  function indentsFor(kind, para, cm) {
+    const step = 0.25;
+    if (kind === "firstLine") return { firstLine: snap(para.firstLine + cm, step) };
+    if (kind === "hanging") return { left: Math.max(0, snap(para.left + cm, step)), firstLine: snap(para.firstLine - cm, step) };
+    if (kind === "left") return { left: Math.max(0, snap(para.left + cm, step)) };
+    if (kind === "right") return { right: snap(para.right - cm, step) };
+    return null;
   }
   function move(event) {
     if (!drag) return;
     const now = drag.axis === "x" ? event.clientX : event.clientY;
     drag.delta = now - drag.start;
     if (drag.axis === "x") guide.style.left = `${now}px`; else guide.style.top = `${now}px`;
+    const cm = drag.delta / (PX_PER_CM * getZoom());
+    if (drag.para && !drag.kind.startsWith("margin")) {
+      const next = indentsFor(drag.kind, drag.para, cm);
+      const key = JSON.stringify(next);
+      if (key !== drag.applied) { drag.applied = key; onIndents(next); }
+    }
+    schedule();
   }
   function end() {
     if (!drag) return;
     const { kind, delta } = drag;
     drag = null;
     guide.style.display = "none";
+    schedule();
+    if (!kind.startsWith("margin")) return; // indents were applied while moving
     const cm = delta / (PX_PER_CM * getZoom());
     if (Math.abs(cm) < 0.05) return;
-    const snap = (v, step) => Math.round(v / step) * step;
-    if (kind.startsWith("margin")) {
-      const g = getGeometry();
-      const side = kind.slice(6).toLowerCase();
-      const now = g[side] / PX_PER_CM;
-      const change = side === "left" || side === "top" ? cm : -cm;
-      onMargins({ [side]: Math.max(0, snap(now + change, 0.1)) });
-      return;
-    }
-    const para = getParagraph();
-    if (!para) return;
-    const step = 0.25;
-    if (kind === "firstLine") onIndents({ firstLine: snap(para.firstLine + cm, step) });
-    else if (kind === "hanging") onIndents({ left: snap(para.left + cm, step), firstLine: snap(para.firstLine - cm, step) });
-    else if (kind === "left") onIndents({ left: snap(para.left + cm, step) });
-    else if (kind === "right") onIndents({ right: snap(para.right - cm, step) });
+    const g = getGeometry();
+    const side = kind.slice(6).toLowerCase();
+    const now = g[side] / PX_PER_CM;
+    const change = side === "left" || side === "top" ? cm : -cm;
+    onMargins({ [side]: Math.max(0, snap(now + change, 0.1)) });
   }
   hruler.addEventListener("pointerdown", (event) => {
     const r = hruler.getBoundingClientRect();
@@ -237,7 +259,7 @@ export function createRulers({ hruler, vruler, page, scroll, getGeometry, getZoo
   for (const canvas of [hruler, vruler]) {
     canvas.addEventListener("pointermove", move);
     canvas.addEventListener("pointerup", end);
-    canvas.addEventListener("pointercancel", () => { drag = null; guide.style.display = "none"; });
+    canvas.addEventListener("pointercancel", () => { drag = null; guide.style.display = "none"; schedule(); });
   }
 
   scroll.addEventListener("scroll", schedule, { passive: true });

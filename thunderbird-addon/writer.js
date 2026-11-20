@@ -116,6 +116,7 @@ async function createTabEditor(tab) {
       scheduleRibbon();
     },
     onSelection: () => { if (tab === doc) { updateWhere(); scheduleRibbon(); review.schedule(); rulers.schedule(); } },
+    onTitleBlock: () => { if (tab === doc) requestAnimationFrame(() => { delete doc.root?.querySelector(".tb-toc")?.dataset.key; updateToc(); }); },
     resolveImage: (src) => resolveImage(tab, src),
     editInline: editChip,
     // Citations and cross-references as the reader sees them.
@@ -639,7 +640,7 @@ function renderToolbar() {
       h("span.rb-stack", {}, wide("format_h1", "Add Text", "The heading level of this paragraph in the table of contents", () => [
         { label: "Do not show in table of contents", checked: !/^h\d$/.test(editor.formatting().block), run: run("paragraph") },
         ...[1, 2, 3].map((n) => ({ label: `Level ${n}`, checked: editor.formatting().block === `h${n}`, run: run("heading", n) })),
-      ], { menu: true }), wide("refresh", "Update Table", "The table of contents is made when the document is rendered", () => toast("The table of contents is made when the document is rendered"), { disabled: settings.toc !== true }))),
+      ], { menu: true }))),
       group(big("superscript", "Footnote", "Footnote", () => [{ label: "Insert footnote", run: () => void insertFootnote() }, "-", { label: "Go to previous footnote", run: () => gotoFootnote(-1) }, { label: "Go to next footnote", run: () => gotoFootnote(1) }], null, { menu: true })),
       group(big("link", "Link", "Add hyperlink (Ctrl+K)", () => void insertLink()), big("bookmark", "Bookmark", "Name this heading, to refer to it", () => void addBookmark())),
       group(big("tag", "Cross-\nreference", "Refer to a figure, table, equation or section", () => void insertCrossref())),
@@ -741,14 +742,29 @@ const toCm = (value) => {
 async function clipboard(action) {
   if (!editor) return;
   editor.focus();
+  // The editor's own clipboard handling (formatting kept, as with Ctrl+C / Ctrl+X / Ctrl+V); the
+  // add-on may read and write the clipboard (clipboardRead, clipboardWrite).
   if (action === "paste") {
+    // execCommand's result is unreliable (false even when it pasted): watch for the paste itself.
+    let pasted = false;
+    const seen = () => { pasted = true; };
+    editor.view.dom.addEventListener("paste", seen, { once: true, capture: true });
+    try { document.execCommand("paste"); } catch { /* not allowed here */ }
+    editor.view.dom.removeEventListener("paste", seen, { capture: true });
+    if (pasted) return;
     const text = await navigator.clipboard.readText().catch(() => null);
     if (text === null) { toast("The clipboard could not be read"); return; }
     if (editor.view.pasteText) editor.view.pasteText(text); else editor.view.dispatch(editor.view.state.tr.insertText(text));
     return;
   }
+  if (editor.view.state.selection.empty) { toast("Select some text first"); return; }
+  let copied = false;
+  const seen = () => { copied = true; };
+  editor.view.dom.addEventListener(action, seen, { once: true, capture: true });
+  try { document.execCommand(action); } catch { /* not allowed here */ }
+  editor.view.dom.removeEventListener(action, seen, { capture: true });
+  if (copied) return;
   const { selection } = editor.where();
-  if (!selection) { toast("Select some text first"); return; }
   await navigator.clipboard.writeText(selection);
   if (action === "cut") editor.view.dispatch(editor.view.state.tr.deleteSelection());
 }
@@ -757,8 +773,10 @@ async function clipboard(action) {
 function formatPainter() {
   if (!editor) return;
   if (painter) { painter = null; ui.page.classList.remove("painting"); updateRibbon(); return; }
-  const { $from } = editor.view.state.selection;
-  painter = [...(editor.view.state.storedMarks ?? $from.marks())].filter((m) => !["link", "comment", "insertion", "deletion"].includes(m.type.name));
+  const { $from, from, empty } = editor.view.state.selection;
+  // With text selected, its own formatting (the marks at the selection's start belong to the text before it).
+  const marks = empty ? (editor.view.state.storedMarks ?? $from.marks()) : (editor.view.state.doc.nodeAt(from)?.marks ?? $from.marks());
+  painter = [...marks].filter((m) => !["link", "comment", "insertion", "deletion"].includes(m.type.name));
   ui.page.classList.add("painting");
   updateRibbon();
 }
@@ -1263,13 +1281,15 @@ function renderRightPanel() {
 
 // ---------------------------------------------------------- the rulers --
 
-const pages = createPageView({ page: ui.page, getEditor: () => editor, getZoom: () => zoom, getLayout: () => (editor ? layoutOf(editor.settings()) : {}), getRunningHead: () => (editor ? editor.settings()["running-head"] ?? "" : ""), paperSize, onDraw: () => { updateWhere(); rulers.schedule(); lines.schedule(); } });
+const pages = createPageView({ page: ui.page, getEditor: () => editor, getZoom: () => zoom, getLayout: () => (editor ? layoutOf(editor.settings()) : {}), getRunningHead: () => (editor ? editor.settings()["running-head"] ?? "" : ""), paperSize, onDraw: () => { updateWhere(); rulers.schedule(); lines.schedule(); updateToc(); } });
 const lines = createLineNumbers({ page: ui.page, getRoot: () => doc.root, getZoom: () => zoom, getLeft: () => pages.geometry.left, getPitch: () => pages.pitch });
 
 /** The indents of the paragraph at the cursor, in cm, for the ruler's markers. */
 function rulerParagraph() {
   if (!editor || doc.status === "readonly") return null;
-  const p = editor.formatting().paragraph;
+  const { paragraph: p, block } = editor.formatting();
+  // Only paragraphs and headings take indents (not lists, quotes or the title): no markers elsewhere.
+  if (block !== "paragraph" && !/^h[1-6]$/.test(block)) return null;
   return { left: toCm(p["margin-left"]) ?? 0, right: toCm(p["margin-right"]) ?? 0, firstLine: toCm(p["text-indent"]) ?? 0 };
 }
 
@@ -1396,8 +1416,14 @@ async function saveCopy() {
 // Insertions ------------------------------------------------------------------
 
 async function insertLink() {
-  const href = await ask({ title: "Link", message: "Select the text first; it becomes the link text.", value: "https://", ok: "Link" });
-  if (href) editor.command("link", { href });
+  if (!editable()) return;
+  const empty = editor.view.state.selection.empty;
+  const href = await ask({ title: "Link", message: empty ? "The address is inserted as the link's text. Select text first to make that text the link." : "The selected text becomes the link.", value: "https://", ok: "Link" });
+  if (!href) return;
+  if (!empty) { editor.command("link", { href }); return; }
+  const { state } = editor.view;
+  editor.view.dispatch(state.tr.insert(state.selection.from, state.schema.text(href, [state.schema.marks.link.create({ href })])).scrollIntoView());
+  editor.focus();
 }
 
 async function insertInlineMath() {
@@ -1545,7 +1571,23 @@ async function editChip(attrs) {
 // ------------------------------------------------------------- outline --
 
 let outlineTimer = null;
-function scheduleOutline() { clearTimeout(outlineTimer); outlineTimer = setTimeout(renderOutline, 400); }
+function scheduleOutline() { clearTimeout(outlineTimer); outlineTimer = setTimeout(() => { renderOutline(); updateToc(); }, 400); }
+
+/** The table of contents under the title (References → Table of Contents): headings to toc-depth with their pages. */
+function updateToc() {
+  const box = doc.root?.querySelector(".tb-toc");
+  if (!box || !editor) return;
+  const depth = Number(editor.settings()["toc-depth"] ?? 3);
+  const items = editor.outline().filter((item) => item.level && item.level <= depth);
+  const pageOf = (pos) => { try { return pages.pageAt(editor.view.coordsAtPos(pos).top)?.page ?? ""; } catch { return ""; } };
+  const key = JSON.stringify(items.map((item) => [item.level, item.text, pageOf(item.pos)]));
+  if (box.dataset.key === key) return;
+  box.dataset.key = key;
+  box.replaceChildren(h("div.toc-title", {}, editor.settings()["toc-title"] ?? "Table of contents"),
+    ...(items.length ? items.map((item) => h("button.toc-entry", { type: "button", dataset: { level: item.level }, title: "Go to this heading", onclick: (event) => { event.preventDefault(); editor.reveal(item.pos); } },
+      h("span.toc-text", {}, item.text || "(untitled)"), h("span.toc-dots"), h("span.toc-page", {}, String(pageOf(item.pos))))) : [h("p.toc-empty", {}, "No headings yet: use the Heading styles (Home).")]));
+  pages.schedule();
+}
 function renderOutline() {
   if (leftOpen !== "outline" || !editor || !doc.path) return;
   const items = editor.outline();
