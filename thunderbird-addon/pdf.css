@@ -47,7 +47,9 @@ body.pd { display: flex; flex-direction: column; background: var(--pd-chrome); c
   background: var(--pd-card); border: 1px solid var(--pd-border); border-radius: var(--mw-radius); box-shadow: var(--mw-shadow-1);
 }
 .toolbar .tb-rows.enter { animation: rb-enter 170ms var(--mw-ease); }
-@keyframes rb-enter { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+/* Only a slide: Thunderbird does not run animations while its window is in the background, and a
+   fade stuck at its start would leave the ribbon invisible (in an agent's screenshot, say). */
+@keyframes rb-enter { from { transform: translateY(-4px); } to { transform: none; } }
 @media (prefers-reduced-motion: reduce) { .toolbar .tb-rows.enter { animation: none; } }
 .toolbar .tb-group { display: flex; align-items: center; gap: 2px; flex: none; padding: 0 8px; position: relative; }
 .toolbar .tb-group + .tb-group::before { content: ""; position: absolute; left: 0; top: 4px; bottom: 4px; width: 1px; background: var(--pd-sep); }
