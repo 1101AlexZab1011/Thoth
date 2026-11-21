@@ -190,6 +190,10 @@ function applyLayout(window, ctx) {
   dropEchoTooltips(window);
   let stopSettings = () => {};
   try { stopSettings = installSettingsSpace(window, ctx); } catch (error) { console.error("Thoth: settings", error); }
+  // The top bar is hidden (chrome.css), and on Windows, macOS and GTK with client-side decorations
+  // Thunderbird draws the window's title bar and buttons inside it. Thunderbird's own switch hands
+  // the title bar back to the system for this window while the layout is on.
+  try { window.CustomTitlebar?.allowedBy("thoth", false); } catch (error) { console.error("Thoth: title bar", error); }
   // The window is titled "… - Thoth", not "… - Mozilla Thunderbird".
   const root = document.documentElement;
   const oldModifier = root.getAttribute("titlemodifier");
@@ -243,6 +247,7 @@ function applyLayout(window, ctx) {
     stopSearch();
     stopSettings();
     if (oldModifier) root.setAttribute("titlemodifier", oldModifier);
+    try { window.CustomTitlebar?.allowedBy("thoth", true); } catch { /* window closing */ }
     stopCalendar();
     stopTasks();
     stopGroups();

@@ -94,6 +94,9 @@ export function userJs(uuid) {
     "mail.accounthub.thundermail.enabled": false,
     // Thunderbird's own updates install quietly, without "Restart to update Thunderbird" prompts.
     "app.update.suppressPrompts": true,
+    // The system's own title bar and window buttons: Thunderbird would draw them in its top bar,
+    // which Thoth hides. Set from the start, so the window never switches frames once laid out.
+    "mail.tabs.drawInTitlebar": false,
     // No data collection for Mozilla.
     "datareporting.policy.dataSubmissionEnabled": false,
     "datareporting.policy.dataSubmissionPolicyBypassNotification": true,

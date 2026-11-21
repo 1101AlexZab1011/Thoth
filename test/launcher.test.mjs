@@ -19,6 +19,7 @@ test("Thoth's profile preferences enable the add-on, fix its origin and drop Thu
   assert.match(text, /user_pref\("mailnews\.start_page\.enabled", false\);/);
   assert.match(text, /user_pref\("mail\.shell\.checkDefaultClient", false\);/);
   assert.match(text, /user_pref\("mail\.provider\.suppress_dialog_on_startup", true\);/);
+  assert.match(text, /user_pref\("mail\.tabs\.drawInTitlebar", false\);/);
   assert.ok(text.includes(ADDON_ID) && text.includes("11111111-2222-3333-4444-555555555555"));
 });
 

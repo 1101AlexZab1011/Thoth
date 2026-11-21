@@ -7,7 +7,9 @@ body { background: var(--mw-surface); font-size: 14px; }
 :root[data-rail] .chat { display: none; }
 .rail .badge { position: absolute; top: 6px; right: 6px; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px; background: var(--mw-danger); color: #fff; font-size: 10px; font-weight: 700; display: grid; place-items: center; }
 
-.chat { height: 100vh; display: grid; grid-template-rows: auto minmax(0, 1fr) auto auto; }
+/* One column, as wide as the panel: a long line in a message wraps instead of widening the whole
+   chat past the panel's edge (header buttons and composer included). */
+.chat { height: 100vh; display: grid; grid-template-rows: auto minmax(0, 1fr) auto auto; grid-template-columns: minmax(0, 1fr); }
 .chat-bar { gap: 10px; padding-left: 12px; }
 .avatar { width: 32px; height: 32px; border-radius: 10px; display: grid; place-items: center; background: linear-gradient(135deg, var(--mw-primary), #8a5cf6); color: #fff; flex: none; }
 .avatar .icon { width: 20px; height: 20px; }
@@ -40,7 +42,7 @@ button.avatar:focus-visible { outline: 2px solid var(--mw-primary); outline-offs
 /* Transcript */
 #messages {
   --gutter: max(14px, calc((100% - 820px) / 2));
-  min-height: 0; overflow-y: auto; overflow-x: hidden; scrollbar-gutter: stable;
+  min-width: 0; min-height: 0; overflow-y: auto; overflow-x: hidden; scrollbar-gutter: stable;
   display: grid; grid-template-columns: minmax(0, 1fr); align-content: start; gap: 14px;
   padding: 16px var(--gutter) 12px;
 }

@@ -39,55 +39,74 @@ var workspace = class extends ExtensionAPI {
     let taskbar;
     try { taskbar = Cc["@mozilla.org/windows-taskbar;1"].getService(Ci.nsIWinTaskbar); } catch { return; }
     if (!taskbar.available) return;
-    const setIcon = this.windowIconSetter();
-    const group = (window) => {
-      try { taskbar.setGroupIdForWindow(window, THOTH_APP_ID); } catch (error) { console.error("Thoth taskbar group failed", error); }
-      try { setIcon?.(window); } catch (error) { console.error("Thoth window icon failed", error); }
-    };
-    ExtensionSupport.registerWindowListener(`${this.extension.id}-taskbar`, { onLoadWindow: group });
-    for (const window of ExtensionSupport.openWindows) group(window);
+    const keepIcon = this.windowIconKeeper();
+    this.stopWindowIcons = () => keepIcon?.stopAll();
+    // Also runs for the windows already open.
+    ExtensionSupport.registerWindowListener(`${this.extension.id}-taskbar`, {
+      onLoadWindow: (window) => {
+        try { taskbar.setGroupIdForWindow(window, THOTH_APP_ID); } catch (error) { console.error("Thoth taskbar group failed", error); }
+        try { keepIcon?.(window); } catch (error) { console.error("Thoth window icon failed", error); }
+      },
+    });
   }
 
   /**
-   * A function that gives a window Thoth's icon, or null. Thunderbird takes window icons only from its
-   * own install folder (chrome/icons/default), never from the profile, so the icon the launcher writes
-   * into the profile (src/launcher.mjs, windowIcons) is set with LoadImage and WM_SETICON.
+   * A function that gives a window Thoth's icon and keeps it there, or null. Thunderbird takes window
+   * icons only from its own install folder (chrome/icons/default), never from the profile, so the icon
+   * the launcher writes into the profile (src/launcher.mjs, windowIcons) is handed to Thunderbird's
+   * own WindowsUIUtils.setWindowIcon. Thunderbird still puts its own icon back at times (as it starts,
+   * when the window frame changes), destroying the one it replaces, so each window is checked every
+   * second and given a fresh copy of Thoth's. A window has one keeper: one left by an earlier run of
+   * the add-on (an update reloads it in the open window) is stopped first.
    */
-  windowIconSetter() {
-    const file = PathUtils.join(PathUtils.profileDir, "chrome", "icons", "default", "messengerWindow.ico");
-    let ctypes;
-    try { ({ ctypes } = ChromeUtils.importESModule("resource://gre/modules/ctypes.sys.mjs")); } catch { return null; }
+  windowIconKeeper() {
+    let ctypes, image, uiUtils;
+    try {
+      ({ ctypes } = ChromeUtils.importESModule("resource://gre/modules/ctypes.sys.mjs"));
+      const { FileUtils } = ChromeUtils.importESModule("resource://gre/modules/FileUtils.sys.mjs");
+      const { NetUtil } = ChromeUtils.importESModule("resource://gre/modules/NetUtil.sys.mjs");
+      uiUtils = Cc["@mozilla.org/windows-ui-utils;1"].getService(Ci.nsIWindowsUIUtils);
+      const file = new FileUtils.File(PathUtils.join(PathUtils.profileDir, "chrome", "icons", "default", "messengerWindow.ico"));
+      if (!file.exists()) return null; // not installed by the launcher
+      const stream = Cc["@mozilla.org/network/file-input-stream;1"].createInstance(Ci.nsIFileInputStream);
+      stream.init(file, -1, 0, 0);
+      const bytes = NetUtil.readInputStreamToString(stream, stream.available());
+      stream.close();
+      image = Cc["@mozilla.org/image/tools;1"].getService(Ci.imgITools).decodeImageFromBuffer(bytes, bytes.length, "image/x-icon");
+    } catch (error) { console.error("Thoth window icon unavailable", error); return null; }
     const user32 = ctypes.open("user32.dll");
-    const LoadImageW = user32.declare("LoadImageW", ctypes.winapi_abi, ctypes.voidptr_t, ctypes.voidptr_t, ctypes.char16_t.ptr, ctypes.uint32_t, ctypes.int, ctypes.int, ctypes.uint32_t);
     const SendMessageW = user32.declare("SendMessageW", ctypes.winapi_abi, ctypes.intptr_t, ctypes.voidptr_t, ctypes.uint32_t, ctypes.uintptr_t, ctypes.voidptr_t);
-    const GetSystemMetrics = user32.declare("GetSystemMetrics", ctypes.winapi_abi, ctypes.int, ctypes.int);
-    const [IMAGE_ICON, LR_LOADFROMFILE, WM_SETICON, ICON_SMALL, ICON_BIG, SM_CXICON, SM_CXSMICON] = [1, 0x10, 0x80, 0, 1, 11, 49];
-    // Loaded once and kept for the session: every window shares them.
-    const load = (size) => LoadImageW(null, file, IMAGE_ICON, size, size, LR_LOADFROMFILE);
-    const big = load(GetSystemMetrics(SM_CXICON)), small = load(GetSystemMetrics(SM_CXSMICON));
-    if (big.isNull() && small.isNull()) { user32.close(); return null; } // no icon in this profile (not installed by the launcher)
-    const WM_GETICON = 0x7f;
-    const ours = (value) => ctypes.cast(value, ctypes.intptr_t).value.toString();
-    return (window) => {
+    const [WM_GETICON, ICON_SMALL, ICON_BIG] = [0x7f, 0, 1];
+    const keepers = new Set();
+    const keep = (window) => {
+      window.thothIconKeeper?.stop();
       const handle = window.docShell?.treeOwner?.QueryInterface(Ci.nsIBaseWindow).nativeHandle;
       if (!handle) return;
       const hwnd = ctypes.voidptr_t(ctypes.UInt64(handle));
-      const apply = () => {
-        if (!big.isNull()) SendMessageW(hwnd, WM_SETICON, ICON_BIG, big);
-        if (!small.isNull()) SendMessageW(hwnd, WM_SETICON, ICON_SMALL, small);
+      const shown = () => `${SendMessageW(hwnd, WM_GETICON, ICON_SMALL, null)}/${SendMessageW(hwnd, WM_GETICON, ICON_BIG, null)}`;
+      let ours;
+      const apply = () => { uiUtils.setWindowIcon(window, image, image); ours = shown(); };
+      const timer = window.setInterval(() => { try { if (shown() !== ours) apply(); } catch { /* window closing */ } }, 1000);
+      const keeper = {
+        stop() {
+          window.clearInterval(timer);
+          keepers.delete(keeper);
+          if (window.thothIconKeeper === keeper) delete window.thothIconKeeper;
+        },
       };
+      keepers.add(keeper);
+      window.thothIconKeeper = keeper;
+      window.addEventListener("unload", () => keeper.stop(), { once: true });
       apply();
-      // Thunderbird sets its own icon again later (after a start from the Start menu the window had it
-      // back within seconds), so the window is checked every few seconds and given Thoth's again.
-      const shown = (which, icon) => icon.isNull() || String(SendMessageW(hwnd, WM_GETICON, which, null)) === ours(icon);
-      const timer = window.setInterval(() => { try { if (!shown(ICON_BIG, big) || !shown(ICON_SMALL, small)) apply(); } catch { /* window closing */ } }, 3000);
-      window.addEventListener("unload", () => window.clearInterval(timer), { once: true });
     };
+    keep.stopAll = () => { for (const keeper of [...keepers]) keeper.stop(); user32.close(); };
+    return keep;
   }
 
   onShutdown(isAppShutdown) {
     if (isAppShutdown) return;
     ExtensionSupport.unregisterWindowListener(`${this.extension.id}-taskbar`);
+    this.stopWindowIcons?.();
     this.undoAboutLogins?.();
     ExtensionSupport.unregisterWindowListener(`${this.extension.id}-workspace`);
     this.scope?.removeTheme?.(this.paneSheetUrl);

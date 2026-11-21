@@ -167,8 +167,9 @@
   max-width: 420px;
 }
 
-/* Top bar: gone. dwm has no window buttons to host, and search opens as a
-   floating box on Ctrl+F / Ctrl+K (see shell.js). */
+/* Top bar: gone. Search opens as a floating box on Ctrl+F / Ctrl+K (see
+   shell.js). The window's title bar and buttons, which Thunderbird would draw
+   in this bar, are handed back to the system (layout.js, CustomTitlebar). */
 :root[mw-workspace]:not([mw-search]) #navigation-toolbox { display: none !important; }
 :root[mw-workspace][mw-search] #navigation-toolbox {
   position: fixed !important;
